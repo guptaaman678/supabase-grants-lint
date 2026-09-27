@@ -1,3 +1,5 @@
+# Also runs on pull_request so the failing-fixture job's ::error output shows up as a real
+# annotation on the PR (github.com/guptaaman678/supabase-grants-lint), not only on push to main.
 name: Action self-test
 
 on:
