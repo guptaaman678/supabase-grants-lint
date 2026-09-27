@@ -52,7 +52,7 @@ runs:
   using: 'composite'
   steps:
     - name: Set up Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: '22'
 
@@ -105,7 +105,7 @@ runs:
         echo "sarif-file=${{ inputs.working-directory }}/grants-lint.sarif" >> "$GITHUB_OUTPUT"
 
     - name: Upload SARIF to the Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always() && inputs.sarif == 'true'
       with:
         sarif_file: ${{ steps.sarif.outputs.sarif-file }}

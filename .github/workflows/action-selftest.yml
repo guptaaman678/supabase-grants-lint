@@ -16,8 +16,8 @@ jobs:
     outputs:
       tarball: ${{ steps.pack.outputs.tarball }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -36,7 +36,7 @@ jobs:
             console.log(JSON.parse(m[0])[0].filename);
           " "$OUT")"
           echo "tarball=$PWD/$FILE" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tarball
           path: ${{ steps.pack.outputs.tarball }}
@@ -45,8 +45,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: tarball
       - name: Locate the packed tarball
@@ -78,8 +78,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: tarball
       - name: Locate the packed tarball
