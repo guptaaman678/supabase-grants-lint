@@ -1,7 +1,8 @@
 /**
- * Whole synthetic projects (spec T5.1): `test/e2e/apps/<app>/` is a Supabase project
- * (`supabase/migrations/*.sql`, optional `grants-lint.config.json`) and `expected.json` lists runs
- * of `check` with their exit code, summary, resolved `since`, findings and notices.
+ * Whole synthetic projects (spec T5.1, T11.2): `test/e2e/apps/<app>/` is a Supabase project
+ * (`supabase/migrations/*.sql`, `supabase/schemas`, or a Drizzle or Prisma layout, optional
+ * `grants-lint.config.json`) and `expected.json` lists runs of `check` with their exit code,
+ * summary, resolved `since`, findings and notices.
  *
  * Each run goes through the built binary (`node <out>/cli/index.js check --format json`, cwd = the
  * project, so discovery and config use their defaults) and through `run()` in-process; both must
@@ -101,8 +102,17 @@ function pick(report: JsonReport) {
   };
 }
 
-it('has the four projects the suite promises', () => {
-  expect(apps).toEqual(['chat-app', 'multi-schema-app', 'pulled-baseline', 'todo-app']);
+it('has the projects the suite promises', () => {
+  expect(apps).toEqual([
+    'chat-app',
+    'declarative-app',
+    'declarative-only',
+    'drizzle-app',
+    'multi-schema-app',
+    'prisma-app',
+    'pulled-baseline',
+    'todo-app',
+  ]);
 });
 
 describe.each(apps)('%s', (app) => {

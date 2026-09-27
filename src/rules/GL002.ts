@@ -60,7 +60,7 @@ export const GL002: Rule = {
             (p) =>
               p.relation.schema === relation.schema &&
               p.relation.name === relation.name &&
-              p.created.file === file.file &&
+              file.sources.includes(p.created.file) &&
               !isServiceRoleOnly(p),
           );
           const roles = [...new Set(policies.flatMap((p) => p.roles))].filter((role) =>

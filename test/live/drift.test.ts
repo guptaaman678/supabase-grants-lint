@@ -2,7 +2,7 @@
  * Live mode against a real Postgres (spec T11.1): PGlite in-process by default, the CI service
  * container when `GRANTS_LINT_TEST_DB_URL` is set (see `test/support/database.ts`).
  */
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -12,6 +12,7 @@ import { run } from '../../src/cli/main.js';
 import { diagnose } from '../../src/doctor.js';
 import { drift } from '../../src/drift.js';
 import { readCatalog } from '../../src/live/read.js';
+import { discoverSchemaFiles } from '../../src/load/declarative.js';
 import { buildSnapshot } from '../../src/live/snapshot.js';
 import { PUBLIC } from '../../src/model/acl.js';
 import { startDatabase, type TestDatabase } from '../support/database.js';
@@ -21,11 +22,14 @@ const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 /**
  * Every sample project in the repo whose migrations Postgres accepts (`golden/projects/mixed` and
- * `e2e/projects/unparseable` hold syntax errors on purpose).
+ * `e2e/projects/unparseable` hold syntax errors on purpose), as `--dir` names it (the Drizzle app
+ * by its migrations folder).
  */
 const PROJECTS = [
   ...['clean', 'errors', 'warnings'].map((p) => `test/e2e/projects/${p}`),
-  ...readdirSync(path.join(ROOT, 'test/e2e/apps')).map((p) => `test/e2e/apps/${p}`),
+  ...readdirSync(path.join(ROOT, 'test/e2e/apps')).map((p) =>
+    p === 'drizzle-app' ? `test/e2e/apps/${p}/drizzle` : `test/e2e/apps/${p}`,
+  ),
   ...['baseline', 'clean'].map((p) => `test/golden/projects/${p}`),
   'media/demo',
 ];
@@ -157,6 +161,20 @@ describe('drift against the database its migrations built', () => {
       EXPECTED[dir] ?? [],
     );
   });
+
+  it.each(['test/e2e/apps/declarative-app', 'test/e2e/apps/declarative-only'])(
+    '%s: the declarative schema files apply in the order they are found',
+    async (dir) => {
+      const db = await database();
+      const { files } = discoverSchemaFiles({
+        schemaPaths: 'auto',
+        projectDir: path.join(ROOT, dir),
+        cwd: ROOT,
+      });
+      expect(files.length).toBeGreaterThan(0);
+      for (const file of files) await db.exec(readFileSync(file.path, 'utf8'));
+    },
+  );
 
   it('reports what was changed by hand, and nothing else', async () => {
     const dir = 'test/e2e/projects/clean';

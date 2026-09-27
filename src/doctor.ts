@@ -18,6 +18,7 @@ import type { Config } from './config/defaults.js';
 import { quoteIdent, sqlGrantee } from './fix/sql.js';
 import { type LintOptions, loadProject } from './lint.js';
 import { toRelPath } from './load/discover.js';
+import { autoExposeSetting } from './load/supabase-config.js';
 import { readLive } from './drift.js';
 import type { LiveSnapshot } from './live/snapshot.js';
 import { DML_PRIVILEGES } from './model/acl.js';
@@ -185,40 +186,12 @@ function liveReport(config: Config, replay: WindowedReplay, live: LiveSnapshot):
   };
 }
 
+export { autoExposeSetting };
+
 function readLocalStack(projectDir: string, cwd: string): LocalStack {
   const file = path.join(projectDir, 'supabase', 'config.toml');
   if (!existsSync(file)) return { file: null, autoExpose: null };
   return { file: toRelPath(cwd, file), autoExpose: autoExposeSetting(readFileSync(file, 'utf8')) };
-}
-
-/**
- * `[api] auto_expose_new_tables` from a Supabase `config.toml`, or `null` when unset. A minimal
- * lookup (tables, dotted keys, comments), not a TOML parser (G5).
- */
-export function autoExposeSetting(toml: string): boolean | null {
-  let table = '';
-  let value: boolean | null = null;
-  for (const raw of toml.split(/\r?\n/)) {
-    const line = raw.replace(/#.*$/, '').trim();
-    const header = /^\[\[?([^\]]*)\]\]?$/.exec(line);
-    if (header !== null) {
-      table = unquote(header[1] ?? '');
-      continue;
-    }
-    const pair = /^([^=]+)=\s*(true|false)$/.exec(line);
-    if (pair === null) continue;
-    const key = [table, unquote(pair[1] ?? '')].filter((part) => part !== '').join('.');
-    if (key === 'api.auto_expose_new_tables') value = pair[2] === 'true';
-  }
-  return value;
-}
-
-/** `"api" . auto_expose` -> `api.auto_expose`. */
-function unquote(key: string): string {
-  return key
-    .split('.')
-    .map((part) => part.trim().replace(/^"(.*)"$/, '$1'))
-    .join('.');
 }
 
 const BIN = 'supabase-grants-lint';

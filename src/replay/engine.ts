@@ -23,6 +23,11 @@ export interface ReplayInput {
   readonly file: string;
   readonly version: string | null;
   readonly statements: readonly Statement[];
+  /**
+   * Every file the statements come from, when that is more than `file`: a set of declarative
+   * schema files replays as one unit (ADR-017). Default: `[file]`.
+   */
+  readonly sources?: readonly string[];
 }
 
 export interface EngineOptions extends ReplayOptions {
@@ -42,6 +47,8 @@ export interface CreatedRelation extends Relation {
 
 export interface FileReplay {
   readonly file: string;
+  /** The files its statements come from (`[file]` for a migration). */
+  readonly sources: readonly string[];
   readonly version: string | null;
   /** Position in replay order, from 0. */
   readonly index: number;
@@ -134,9 +141,12 @@ export function replay(inputs: readonly ReplayInput[], options: EngineOptions): 
     for (const stmt of input.statements) apply(stmt, ctx);
     const before = catalog;
     catalog = ctx.catalog;
-    const inFile = (at: { file: string } | null): boolean => at?.file === input.file;
+    const sources = input.sources ?? [input.file];
+    const inFile = (at: { file: string } | null): boolean =>
+      at !== null && sources.includes(at.file);
     return {
       file: input.file,
+      sources,
       version: input.version,
       index,
       before,

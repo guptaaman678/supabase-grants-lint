@@ -30,6 +30,11 @@ export interface DiscoverOptions {
   readonly projectDir?: string;
   /** Directory that `relPath` is relative to. Default: `process.cwd()`. */
   readonly cwd?: string;
+  /**
+   * A missing default `supabase/migrations` means no migrations rather than a usage error: the
+   * project has declarative schemas and may not have generated a migration yet.
+   */
+  readonly allowMissingDefault?: boolean;
 }
 
 export interface Discovery {
@@ -43,6 +48,14 @@ const VERSION_PREFIX = /^([0-9]+)_/;
 /** The migration version: the leading digits of `name` when they are followed by `_`. */
 export function extractVersion(name: string): string | null {
   return VERSION_PREFIX.exec(name)?.[1] ?? null;
+}
+
+/**
+ * The version of the migration at `abs`: from its file name, else from its directory's name, for
+ * layouts with one directory per migration (Prisma: `<version>_<name>/migration.sql`, ADR-017).
+ */
+export function migrationVersion(abs: string): string | null {
+  return extractVersion(path.basename(abs)) ?? extractVersion(path.basename(path.dirname(abs)));
 }
 
 export function isSqlFile(name: string): boolean {
@@ -114,6 +127,9 @@ export function discoverMigrations(options: DiscoverOptions = {}): Discovery {
     }
     const abs = path.resolve(projectDir, entry);
     const stat = statSync(abs, { throwIfNoEntry: false });
+    if (stat === undefined && options.allowMissingDefault === true && raw === DEFAULT_MIGRATIONS) {
+      continue;
+    }
     if (stat === undefined) {
       throw new UsageError(
         `Migrations directory not found: ${toRelPath(cwd, abs) || '.'}. ` +
@@ -135,7 +151,7 @@ export function discoverMigrations(options: DiscoverOptions = {}): Discovery {
   const files = [...found]
     .map((abs): MigrationFile => {
       const name = path.basename(abs);
-      return { path: abs, relPath: toRelPath(cwd, abs), name, version: extractVersion(name) };
+      return { path: abs, relPath: toRelPath(cwd, abs), name, version: migrationVersion(abs) };
     })
     .sort(compareMigrations);
 

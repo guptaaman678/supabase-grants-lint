@@ -7,10 +7,11 @@ import path from 'node:path';
 import type { Config } from './config/defaults.js';
 import { loadConfig } from './config/load.js';
 import { validateConfig } from './config/validate.js';
+import { discoverSchemaFiles, type SchemaPathsSource } from './load/declarative.js';
 import { discoverMigrations, type DiscoveryNotice } from './load/discover.js';
 import { loadParser, type ParsedFile } from './parse/adapter.js';
 import type { ReplayInput } from './replay/engine.js';
-import { replayWithWindow, type ResolvedSince } from './replay/since.js';
+import { replayWithWindow, type ResolvedSince, type WindowedReplay } from './replay/since.js';
 import { type Finding, type Notice, replayNotices, runRules } from './rules/index.js';
 
 export interface LintOptions {
@@ -60,6 +61,31 @@ export interface LoadedProject {
   /** One per migration file, in replay order. */
   readonly inputs: readonly ReplayInput[];
   readonly parsed: readonly ParsedFile[];
+  /** The declarative schema files (ADR-017); `null` when the project has none. */
+  readonly declarative: DeclarativeProject | null;
+}
+
+export interface DeclarativeProject {
+  readonly source: SchemaPathsSource;
+  /** The files, in the order the Supabase CLI applies them. */
+  readonly files: readonly string[];
+  /** Every file's statements, as one replay unit. */
+  readonly input: ReplayInput;
+  readonly parsed: readonly ParsedFile[];
+}
+
+/**
+ * How declarative schemas replay (ADR-017): as one unit, since the diff engine orders statements
+ * by dependency rather than by file; from no default grants, because the state they describe
+ * must carry its own grants once auto-grants are gone; every relation in them enforced.
+ */
+export function replayDeclarative(project: DeclarativeProject, config: Config): WindowedReplay {
+  return replayWithWindow([project.input], {
+    ...config,
+    since: 'none',
+    platformDefaults: 'explicit',
+    platformRevokeAtSince: false,
+  });
 }
 
 /**
@@ -79,20 +105,42 @@ export async function loadProject(options: LintOptions = {}): Promise<LoadedProj
     ...(options.configFile === undefined ? {} : { configFile: options.configFile }),
     ...(options.schemas === undefined ? {} : { overrides: { schemas: [...options.schemas] } }),
   });
+  const schemaFiles = discoverSchemaFiles({ schemaPaths: config.schemaPaths, projectDir, cwd });
   const { files, notices: discovery } = discoverMigrations({
     migrations: config.migrations,
     projectDir,
     cwd,
+    allowMissingDefault: schemaFiles.files.length > 0,
   });
 
   const parser = await loadParser();
-  const parsed = files.map((file) => parser.parse(readFileSync(file.path, 'utf8'), file.relPath));
+  const parse = (file: { path: string; relPath: string }): ParsedFile =>
+    parser.parse(readFileSync(file.path, 'utf8'), file.relPath);
+  const parsed = files.map(parse);
   const inputs = files.map((file, i) => ({
     file: file.relPath,
     version: file.version,
     statements: parsed[i]?.statements ?? [],
   }));
-  return { cwd, projectDir, config, cliSince, discovery, inputs, parsed };
+
+  let declarative: DeclarativeProject | null = null;
+  const [first] = schemaFiles.files;
+  if (schemaFiles.source !== null && first !== undefined) {
+    const declared = schemaFiles.files.map(parse);
+    const sources = schemaFiles.files.map((file) => file.relPath);
+    declarative = {
+      source: schemaFiles.source,
+      files: sources,
+      parsed: declared,
+      input: {
+        file: first.relPath,
+        version: null,
+        sources,
+        statements: declared.flatMap((p) => p.statements),
+      },
+    };
+  }
+  return { cwd, projectDir, config, cliSince, discovery, inputs, parsed, declarative };
 }
 
 /**
@@ -101,19 +149,31 @@ export async function loadProject(options: LintOptions = {}): Promise<LoadedProj
  */
 export async function lint(options: LintOptions = {}): Promise<LintResult> {
   const started = performance.now();
-  const { config, cliSince, discovery, inputs, parsed } = await loadProject(options);
+  const { config, cliSince, discovery, inputs, parsed, declarative } = await loadProject(options);
   const replay = replayWithWindow(inputs, { ...config, cliSince });
+  const declared = declarative === null ? undefined : replayDeclarative(declarative, config);
+  const allParsed = [...parsed, ...(declarative?.parsed ?? [])];
   const result = runRules({
     config,
     replay,
-    suppressions: parsed.flatMap((p) => p.suppressions),
-    suppressionProblems: parsed.flatMap((p) => p.suppressionProblems),
+    suppressions: allParsed.flatMap((p) => p.suppressions),
+    suppressionProblems: allParsed.flatMap((p) => p.suppressionProblems),
     discovery,
     strictParse: options.strictParse ?? false,
+    ...(declared === undefined ? {} : { declarative: declared }),
   });
   const notices = [...replayNotices(replay), ...result.notices];
   const count = (severity: Finding['severity']): number =>
     result.findings.filter((finding) => finding.severity === severity).length;
+  // A relation both migrations and declarative files create counts once.
+  const relations = new Set(
+    [replay, ...(declared === undefined ? [] : [declared])].flatMap((r) =>
+      r.final
+        .relations()
+        .filter((relation) => r.inScope(relation))
+        .map((relation) => `${relation.schema}.${relation.name}`),
+    ),
+  );
 
   return {
     config,
@@ -121,8 +181,8 @@ export async function lint(options: LintOptions = {}): Promise<LintResult> {
     findings: result.findings,
     notices,
     summary: {
-      files: inputs.length,
-      relations: replay.final.relations().filter((relation) => replay.inScope(relation)).length,
+      files: inputs.length + (declarative?.files.length ?? 0),
+      relations: relations.size,
       errors: count('error'),
       warnings: count('warn'),
       notices: count('info') + notices.length,

@@ -1,0 +1,23 @@
+{
+  "description": "Prisma Migrate output (prisma/migrations/<version>_<name>/migration.sql) through a migrations glob in the config: versions come from the directory names, the opt-in is detected, and a SERIAL id needs sequence usage for the role that inserts.",
+  "runs": [
+    {
+      "args": [],
+      "exitCode": 1,
+      "since": { "value": "20261001000000", "source": "auto" },
+      "summary": { "files": 2, "relations": 1, "errors": 1, "warnings": 0, "notices": 0 },
+      "findings": [
+        {
+          "rule": "GL004",
+          "severity": "error",
+          "file": "prisma/migrations/20261002000000_add_orders/migration.sql",
+          "line": 2,
+          "column": 1,
+          "relation": "public.orders",
+          "role": "authenticated"
+        }
+      ],
+      "notices": []
+    }
+  ]
+}

@@ -46,6 +46,7 @@ with a suggestion for typos.
 | ----------------------- | ---------------------------------------- | --------------------------- |
 | `migrations`            | string or string[]                       | `"supabase/migrations"`     |
 | `schemas`               | string[]                                 | `["public"]`                |
+| `schemaPaths`           | `"auto"` or string[]                     | `"auto"`                    |
 | `since`                 | `"auto"`, `"none"` or a version          | `"auto"`                    |
 | `platformDefaults`      | `"legacy"` or `"explicit"`               | `"legacy"`                  |
 | `platformRevokeAtSince` | boolean                                  | `true`                      |
@@ -63,12 +64,25 @@ Where the migrations are: a directory (its `*.sql` files, not subdirectories), a
 `.sql` file, or a list of these, relative to the project directory. The version of a file is the
 digits before the first `_` in its name (`20261002120000_add_todos.sql` has version
 `20261002120000`). Files replay in name order, like the Supabase CLI applies them. Files without a
-version replay last and get a [PARSE001](rules/PARSE001.md) notice.
+version replay last and get a [PARSE001](rules/PARSE001.md) notice. A file named without a version
+takes its directory's, for tools that write one directory per migration (Prisma:
+`"migrations": "prisma/migrations/*/migration.sql"`).
 
 ### schemas
 
 The schemas whose tables, views and sequences are checked. Add every schema you expose through the
 Data API (`"schemas": ["public", "api"]`).
+
+### schemaPaths
+
+Your [declarative schema](how-it-works.md#declarative-schemas) files. With `"auto"` they are found
+the way the Supabase CLI finds them: `schema_paths` under `[db.migrations]` in
+`supabase/config.toml` (relative to `supabase/`), else the pg-delta `declarative_schema_path` when
+`[experimental.pgdelta]` is enabled, else `supabase/schemas` if it exists. A list of directories,
+globs and `.sql` files (relative to the project directory) replaces that search, and `[]` skips
+declarative schemas. Either way the files are read in the CLI's order: entries in the order
+listed, each entry's matches sorted by name, directories expanded to every `.sql` file below them,
+and a file an earlier entry matched skipped.
 
 ### since
 

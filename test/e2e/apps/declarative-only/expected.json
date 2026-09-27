@@ -1,0 +1,13 @@
+{
+  "description": "Only declarative schemas, no supabase/migrations yet: supabase/schemas and its subdirectory are checked on their own, and every relation carries its grants.",
+  "runs": [
+    {
+      "args": [],
+      "exitCode": 0,
+      "since": { "value": null },
+      "summary": { "files": 2, "relations": 2, "errors": 0, "warnings": 0, "notices": 0 },
+      "findings": [],
+      "notices": []
+    }
+  ]
+}

@@ -53,6 +53,7 @@ function fileError(raw: unknown): ConfigError {
 
 const FULL: Config = {
   migrations: ['db/migrations', 'extra/*.sql'],
+  schemaPaths: ['db/schemas', 'db/views/*.sql'],
   schemas: ['public', 'api'],
   since: '20261001090000',
   platformDefaults: 'explicit',

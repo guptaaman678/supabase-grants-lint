@@ -50,6 +50,37 @@ A project opted in outside its migrations (from the dashboard, or by the platfor
 assumes the revoke Supabase published just before the next migration
 ([`platformRevokeAtSince`](configuration.md#platformrevokeatsince)).
 
+## Declarative schemas
+
+With [declarative schemas](https://supabase.com/docs/guides/local-development/declarative-database-schemas)
+the files in `supabase/schemas` describe the database you want, and the Supabase CLI writes the
+migrations by diffing that state against your history. Grants and policies are part of that state,
+so a table that has no grant there is generated without one (or, for an existing table, with a
+revoke). `check` reads these files as well as the migrations (see
+[`schemaPaths`](configuration.md#schemapaths) for which files and in what order) and checks them
+differently:
+
+- **One unit.** All the files are replayed together and checked at the end, because the diff
+  engine orders statements by what they depend on, not by file. A grant in `grants.sql` counts for
+  a table in `tables.sql`.
+- **No automatic grants.** The replay starts with no default privileges, since the state has to
+  carry its own grants once automatic grants are gone. A default-privilege statement in the files
+  still applies to the tables after it.
+- **Every relation is checked** with GL001 to GL006 and GL008, whatever `since` says; there is no
+  history to exempt. GL000 and GL007 are about migration history and do not apply.
+
+Findings point at the schema file and line, and come after the migrations' findings. Inline
+suppressions and `ignore` entries work the same way. `doctor`, `explain` and `diff` read the
+migrations only.
+
+## Other migration tools
+
+Any tool that writes plain SQL files works. Point `--dir` at the folder that holds them (Drizzle
+Kit: `--dir drizzle`), or set [`migrations`](configuration.md#migrations) to a directory or glob
+(Prisma: `"prisma/migrations/*/migration.sql"`, where each migration's version comes from its
+directory name). The files must include the grants: an ORM's schema usually has no place for them,
+so add them in a custom migration.
+
 ## Replays, local resets and preview branches
 
 A replay runs only what is in the files. Preview branches start without automatic grants in
