@@ -11,6 +11,10 @@ export default defineConfig({
   },
   test: {
     include: ['test/**/*.test.ts'],
+    // Live-mode tests start a real Postgres (PGlite) per test, which takes seconds on a busy
+    // CI runner; the 5 s default only guards against hangs.
+    testTimeout: 60_000,
+    hookTimeout: 120_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

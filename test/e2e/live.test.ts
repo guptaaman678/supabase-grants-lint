@@ -51,6 +51,7 @@ function cli(args: string[], env: Record<string, string | undefined> = {}) {
 }
 
 function expectNoSecret(output: { stdout: string; stderr: string }): void {
+  expect(password).not.toBe('');
   for (const text of [output.stdout, output.stderr]) {
     expect(text).not.toContain(password);
     expect(text).not.toContain(db.url);

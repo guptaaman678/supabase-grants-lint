@@ -15,6 +15,9 @@ import postgres from 'postgres';
 
 export const TEST_DB_URL_ENV = 'GRANTS_LINT_TEST_DB_URL';
 
+/** Every test database URL carries a password, so redaction is always checked. */
+const PLACEHOLDER_PASSWORD = 'not-a-real-password';
+
 export interface TestDatabase {
   /** Connection string for the CLI and `readCatalog`, with a password to check redaction. */
   readonly url: string;
@@ -67,7 +70,7 @@ async function pglite(): Promise<TestDatabase> {
   await socket.start();
   const { port } = socket as unknown as { port: number };
   return {
-    url: `postgres://postgres:not-a-real-password@127.0.0.1:${String(port)}/postgres`,
+    url: `postgres://postgres:${PLACEHOLDER_PASSWORD}@127.0.0.1:${String(port)}/postgres`,
     exec: async (sql) => {
       await db.exec(sql);
     },
@@ -84,6 +87,9 @@ async function onServer(serverUrl: string): Promise<TestDatabase> {
   await admin.unsafe(`create database ${name}`);
   const url = new URL(serverUrl);
   url.pathname = `/${name}`;
+  // CI's server trusts local connections; a placeholder password still lets the tests check that
+  // no output ever shows it.
+  if (url.password === '') url.password = PLACEHOLDER_PASSWORD;
   const sql = postgres(url.toString(), { max: 1, onnotice: () => undefined });
   return {
     url: url.toString(),
