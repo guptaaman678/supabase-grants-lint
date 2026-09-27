@@ -14,6 +14,7 @@ import {
   diagnose,
   formatDoctor,
   optInSql,
+  postgresVersion,
   WIDTH,
   wrap,
 } from '../../src/doctor.js';
@@ -260,6 +261,51 @@ describe('diagnose and formatDoctor', () => {
     const text = formatDoctor(await diagnose({ cwd: OPTED_IN }), colors(true));
     expect(text).toContain('\u001b[1mOpt-in status\u001b[22m\n');
     expect(text).toContain('\u001b[1mNext steps\u001b[22m\n');
+  });
+});
+
+describe('Live database section', () => {
+  it('is left out without a database URL', async () => {
+    const report = await diagnose({ cwd: OPTED_IN });
+    expect(report.live).toBeNull();
+    expect(formatDoctor(report)).not.toContain('Live database');
+  });
+
+  it('shows the server, automatic grants per schema and the drift count, before Next steps', async () => {
+    const report = await diagnose({ cwd: OPTED_IN });
+    const text = formatDoctor({
+      ...report,
+      config: { ...report.config, schemas: ['public', 'api'] },
+      live: {
+        serverVersion: 170002,
+        autoGrants: [
+          { schema: 'public', roles: ['anon', 'authenticated', 'service_role'] },
+          { schema: 'api', roles: [] },
+        ],
+        drift: 1,
+      },
+    });
+    expect(text.indexOf('\nLive database\n')).toBeLessThan(text.indexOf('\nNext steps\n'));
+    expect(text.indexOf('\nHistory exposure\n')).toBeLessThan(text.indexOf('\nLive database\n'));
+    expect(flat(text)).toContain(
+      'Live database Read the database (Postgres 17.2), read-only. New tables postgres creates ' +
+        'in schema public are still granted to anon, authenticated, service_role automatically: ' +
+        'the database is not opted in yet. New tables postgres creates in schema api get no ' +
+        'automatic grants: the database is opted in, so every migration must grant what the ' +
+        'Data API needs. 1 difference between the database and the migrations (GL009); run ' +
+        'supabase-grants-lint diff to list them.\n',
+    );
+    for (const line of text.split('\n')) expect(line.length).toBeLessThanOrEqual(WIDTH);
+  });
+
+  it('says when there is no drift', async () => {
+    const report = await diagnose({ cwd: OPTED_IN });
+    const live = { serverVersion: 150008, autoGrants: [], drift: 0 };
+    expect(flat(formatDoctor({ ...report, live }))).toContain(
+      'Read the database (Postgres 15.8), read-only. No drift: the database has the grants, ' +
+        'default privileges and policies the migrations give.',
+    );
+    expect(postgresVersion(180003)).toBe('18.3');
   });
 });
 

@@ -3,7 +3,10 @@
 ## Supported versions
 
 `supabase-grants-lint` is a static analysis CLI: it does not connect to a
-database or network in `check`, `doctor`, `explain` or `init` (v0.1). Security
+database or network in `check`, `explain` or `init`, nor in `doctor` unless
+given a database URL. Live mode (`diff`, `doctor --db-url`) connects only to the
+database URL you pass, reads catalogs in a read-only transaction and never
+prints the URL. Security
 fixes are released against the latest `0.x` minor version. Once 1.0.0 ships,
 the latest major version receives security fixes.
 
@@ -29,6 +32,6 @@ otherwise.
 ## Scope
 
 In scope: the CLI, the programmatic API, and the GitHub Action, as published
-from this repository. Out of scope: the Supabase platform itself, and any
-database `supabase-grants-lint` did not connect to (v0.1 never connects to a
-database).
+from this repository, including how live mode handles connection strings. Out
+of scope: the Supabase platform itself, and any database
+`supabase-grants-lint` did not connect to (only live mode connects).

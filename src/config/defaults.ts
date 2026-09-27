@@ -11,6 +11,7 @@ export const RULE_IDS = [
   'GL006',
   'GL007',
   'GL008',
+  'GL009',
   'PARSE001',
   'PARSE002',
 ] as const;

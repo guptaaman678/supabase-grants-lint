@@ -24,6 +24,13 @@ export default defineConfig({
         // Severities, suppressions and ordering apply to every finding (spec T3.0).
         'src/rules/**': { branches: 100, functions: 100, lines: 100, statements: 100 },
         'src/fix/**': { branches: 100, functions: 100, lines: 100, statements: 100 },
+        // Live mode's parsing and comparison; `read.ts` talks to Postgres (spec T11.1).
+        'src/live/{acl-text,snapshot,url}.ts': {
+          branches: 100,
+          functions: 100,
+          lines: 100,
+          statements: 100,
+        },
       },
     },
   },

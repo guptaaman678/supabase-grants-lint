@@ -7,17 +7,24 @@
  * `expected.json`: `{ "rules"?: RuleId[], "findings": [...], "notices"?: [...] }`. `rules` lists the
  * rules to run (default: the fixture's own rule), so adding a rule never changes another rule's
  * fixtures. A `pass` case reports nothing for its rule; a `fail` case reports at least one finding.
+ *
+ * GL009 (drift) compares with a live database: its cases build a real Postgres from the fixture's
+ * migrations plus `database.sql`, the changes made by hand (see `test/support/database.ts`).
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RULE_IDS, type RuleId } from '../../src/config/defaults.js';
 import { loadConfig } from '../../src/config/load.js';
 import { discoverMigrations } from '../../src/load/discover.js';
 import { loadParser, type MigrationParser } from '../../src/parse/adapter.js';
 import { replayWithWindow } from '../../src/replay/since.js';
+import { readLive } from '../../src/drift.js';
+import type { LiveSnapshot } from '../../src/live/snapshot.js';
 import { RULES, runRules } from '../../src/rules/index.js';
+import type { TestDatabase } from '../support/database.js';
+import { databaseFor } from '../support/live-project.js';
 
 const ROOT = fileURLToPath(new URL('../fixtures', import.meta.url));
 const KINDS = ['pass', 'fail'] as const;
@@ -76,7 +83,25 @@ beforeAll(async () => {
   parser = await loadParser();
 });
 
-function lint(fixture: Fixture, expected: Expected) {
+const open: TestDatabase[] = [];
+
+afterAll(async () => {
+  await Promise.all(open.map((db) => db.close()));
+});
+
+/** The live database for a GL009 case: its migrations applied, then `database.sql`. */
+async function liveFor(fixture: Fixture, schemas: readonly string[]): Promise<LiveSnapshot> {
+  const byHand = path.join(fixture.dir, 'database.sql');
+  const db = await databaseFor(
+    fixture.dir,
+    existsSync(byHand) ? [readFileSync(byHand, 'utf8')] : [],
+    'migrations',
+  );
+  open.push(db);
+  return readLive(db.url, schemas);
+}
+
+async function lint(fixture: Fixture, expected: Expected) {
   const { dir } = fixture;
   const { config } = loadConfig({
     cwd: dir,
@@ -98,6 +123,7 @@ function lint(fixture: Fixture, expected: Expected) {
     config,
   );
   const ids = expected.rules ?? [fixture.rule];
+  const live = fixture.rule === 'GL009' ? await liveFor(fixture, config.schemas) : undefined;
   return runRules({
     config,
     replay,
@@ -105,6 +131,7 @@ function lint(fixture: Fixture, expected: Expected) {
     suppressionProblems: parsed.flatMap((p) => p.suppressionProblems),
     discovery: notices,
     rules: RULES.filter((rule) => ids.includes(rule.id)),
+    ...(live === undefined ? {} : { live }),
   });
 }
 
@@ -138,11 +165,11 @@ describe('fixture layout', () => {
 describe.each(FIXTURES.map((f) => [`${f.rule}/${f.kind}/${f.name}`, f] as const))(
   '%s',
   (_, fixture) => {
-    it('reports exactly the expected findings and notices', () => {
+    it('reports exactly the expected findings and notices', async () => {
       const expected = JSON.parse(
         readFileSync(path.join(fixture.dir, 'expected.json'), 'utf8'),
       ) as Expected;
-      const { findings, notices } = lint(fixture, expected);
+      const { findings, notices } = await lint(fixture, expected);
       expect(
         findings.map((f) => ({
           rule: f.ruleId,

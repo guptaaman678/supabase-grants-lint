@@ -34,6 +34,8 @@ beforeAll(() => {
 function cli(args: string[], env: Record<string, string> = {}) {
   const inherited = { ...process.env };
   delete inherited.NO_COLOR;
+  // doctor reads a live database when this is set (T11.1); these tests stay offline (G4).
+  delete inherited.SUPABASE_DB_URL;
   const result = spawnSync(process.execPath, [BIN, ...args], {
     cwd: ROOT,
     encoding: 'utf8',
@@ -246,20 +248,36 @@ describe('output', () => {
     expect(cli(['check', '--dir', `${PROJECTS}/clean`, '--format', 'json']).code).toBe(0);
   });
 
+  /** Every file and package `file` imports statically, transitively. */
+  function staticImports(file: string, imports = new Set<string>()): Set<string> {
+    if (imports.has(file)) return imports;
+    imports.add(file);
+    const source = readFileSync(file, 'utf8');
+    // Static imports only: `import ... from "x"` at the start of a line.
+    for (const [, spec] of source.matchAll(/^import[^;]*?from\s+"([^"]+)"/gms)) {
+      if (spec?.startsWith('.') === true) {
+        staticImports(path.resolve(path.dirname(file), spec), imports);
+      } else if (spec !== undefined) imports.add(spec);
+    }
+    return imports;
+  }
+
   it('loads the parser only for commands that lint', () => {
-    const imports = new Set<string>();
-    const visit = (file: string): void => {
-      if (imports.has(file)) return;
-      imports.add(file);
-      const source = readFileSync(file, 'utf8');
-      // Static imports only: `import ... from "x"` at the start of a line.
-      for (const [, spec] of source.matchAll(/^import[^;]*?from\s+"([^"]+)"/gms)) {
-        if (spec?.startsWith('.') === true) visit(path.resolve(path.dirname(file), spec));
-        else if (spec !== undefined) imports.add(spec);
-      }
-    };
-    visit(BIN);
+    const imports = staticImports(BIN);
     expect([...imports]).not.toContain('libpg-query');
+    expect([...imports]).not.toContain('postgres');
     expect(readFileSync(BIN, 'utf8')).toMatch(/import\("\.\.\/lint-[A-Z0-9]+\.js"\)/);
+  });
+
+  it('never loads the Postgres client for check, only in live mode (G4)', () => {
+    const chunk = /import\("\.\.\/(lint-[A-Z0-9]+\.js)"\)/.exec(readFileSync(BIN, 'utf8'))?.[1];
+    expect(chunk).toBeDefined();
+    const imports = staticImports(path.join(ROOT, 'dist', chunk ?? ''));
+    expect([...imports]).toContain('libpg-query');
+    expect([...imports]).not.toContain('postgres');
+    const loadsClient = [...imports].filter(
+      (file) => file.startsWith(ROOT) && readFileSync(file, 'utf8').includes('import("postgres")'),
+    );
+    expect(loadsClient).toEqual([]);
   });
 });

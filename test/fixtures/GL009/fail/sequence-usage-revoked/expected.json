@@ -1,0 +1,13 @@
+{
+  "findings": [
+    {
+      "rule": "GL009",
+      "severity": "warn",
+      "file": "migrations/20261001000000_orders.sql",
+      "line": 1,
+      "column": 1,
+      "relation": "public.orders_id_seq",
+      "role": "anon"
+    }
+  ]
+}

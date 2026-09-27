@@ -1,0 +1,13 @@
+{
+  "findings": [
+    {
+      "rule": "GL009",
+      "severity": "warn",
+      "file": "migrations/20261001000000_todos.sql",
+      "line": 1,
+      "column": 1,
+      "relation": "public.todos",
+      "role": "anon"
+    }
+  ]
+}

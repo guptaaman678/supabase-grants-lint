@@ -5,7 +5,15 @@
     "configFile": "vitest.mutation.config.ts"
   },
   "ignorePatterns": ["coverage", "dist"],
-  "mutate": ["src/model/**/*.ts", "src/replay/**/*.ts", "src/rules/**/*.ts", "src/fix/**/*.ts"],
+  "mutate": [
+    "src/model/**/*.ts",
+    "src/replay/**/*.ts",
+    "src/rules/**/*.ts",
+    "src/fix/**/*.ts",
+    "src/live/acl-text.ts",
+    "src/live/snapshot.ts",
+    "src/live/url.ts"
+  ],
   "reporters": ["clear-text", "progress", "html", "json"],
   "coverageAnalysis": "perTest",
   "thresholds": {

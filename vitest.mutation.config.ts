@@ -9,7 +9,7 @@ export default defineConfig({
   ...base,
   test: {
     ...base.test,
-    include: ['test/unit/**/*.test.ts', 'test/golden/**/*.test.ts'],
+    include: ['test/unit/**/*.test.ts', 'test/golden/**/*.test.ts', 'test/live/**/*.test.ts'],
     setupFiles: ['test/stryker-name-filter.ts'],
   },
 });

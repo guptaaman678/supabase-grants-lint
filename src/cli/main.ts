@@ -3,9 +3,11 @@
  * unexpected exits 3 with a request to report it. No network, no update check (G4).
  */
 import { UsageError } from '../errors.js';
+import { redact } from '../live/url.js';
 import { version } from '../version.js';
 import { booleanOption, parseCommandArgs, suggestCommand } from './args.js';
 import { check } from './commands/check.js';
+import { diff } from './commands/diff.js';
 import { doctor } from './commands/doctor.js';
 import { explain } from './commands/explain.js';
 import { init } from './commands/init.js';
@@ -14,7 +16,7 @@ import { type Io, processIo } from './io.js';
 import { usage } from './usage.js';
 
 const BIN = 'supabase-grants-lint';
-const COMMANDS = ['check', 'doctor', 'explain', 'init'] as const;
+const COMMANDS = ['check', 'doctor', 'diff', 'explain', 'init'] as const;
 const ISSUES = 'https://github.com/guptaaman678/supabase-grants-lint/issues';
 
 /** Runs the CLI with `argv` (without `node` and the script) and returns the exit code. */
@@ -56,6 +58,8 @@ async function dispatch(argv: readonly string[], io: Io): Promise<ExitCode> {
       return check(rest, io);
     case 'doctor':
       return doctor(rest, io);
+    case 'diff':
+      return diff(rest, io);
     case 'explain':
       return explain(rest, io);
     case 'init':
@@ -65,10 +69,7 @@ async function dispatch(argv: readonly string[], io: Io): Promise<ExitCode> {
   }
 }
 
-/** Database URLs and passwords never reach the terminal (G12). */
-export function redact(text: string): string {
-  return text.replace(/\b(postgres(?:ql)?:\/\/)[^\s'"]*@/gi, '$1***@');
-}
+export { redact };
 
 function reportError(error: unknown, io: Io): ExitCode {
   if (error instanceof UsageError) {

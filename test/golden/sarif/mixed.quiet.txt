@@ -110,6 +110,17 @@
               }
             },
             {
+              "id": "GL009",
+              "name": "drift",
+              "shortDescription": {
+                "text": "The live database has grants, default privileges or policies the migrations do not, or the reverse (diff and doctor --db-url only)."
+              },
+              "helpUri": "https://github.com/guptaaman678/supabase-grants-lint/blob/v<version>/docs/rules/GL009.md",
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
               "id": "PARSE001",
               "name": "unparseable-statement",
               "shortDescription": {

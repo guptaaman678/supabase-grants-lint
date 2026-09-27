@@ -12,7 +12,8 @@ Find the Supabase migrations that break on a fresh environment: tables the Data 
 ![supabase-grants-lint check reports three missing grants, the printed fixes are appended, and a second check is clean](media/demo.gif)
 
 It replays your SQL migrations, works out who can reach every table, and prints the `grant` that
-fixes each finding. It reads files only: no database connection, no telemetry.
+fixes each finding. `check` reads files only: no database connection, no telemetry. An opt-in
+[live mode](#live-mode) compares the migrations with a real database, read-only.
 
 ## Quick start
 
@@ -100,6 +101,7 @@ outputs and private-repository notes: [docs/github-action.md](docs/github-action
 | [GL006](docs/rules/GL006.md)       | default-privileges-regrant | error   | `alter default privileges ... grant` turning automatic grants back on       |
 | [GL007](docs/rules/GL007.md)       | replay-reenables-defaults  | warn    | A replay of the history ends with automatic grants production does not have |
 | [GL008](docs/rules/GL008.md)       | leftover-privileges        | warn    | `truncate`, `references`, `trigger` left to `anon` or `authenticated`       |
+| [GL009](docs/rules/GL009.md)       | drift                      | warn    | A live database whose grants or policies differ from the migrations         |
 | [PARSE001](docs/rules/PARSE001.md) | unparseable-statement      | info    | A statement the Postgres parser rejects (skipped)                           |
 | [PARSE002](docs/rules/PARSE002.md) | dynamic-sql-skipped        | info    | A `DO` block or `execute` that changes grants or tables (not modelled)      |
 
@@ -130,6 +132,20 @@ the most useful ones:
 All keys and flags: [docs/configuration.md](docs/configuration.md). Other commands:
 `supabase-grants-lint explain public.todos` prints the grant timeline of one table, and
 `--format json|sarif|github` changes the output.
+
+## Live mode
+
+`check` never connects to a database. To compare the migrations with a real one (grants made by
+hand in the SQL editor, tables made in the dashboard, migrations never pushed), pass a connection
+string for a read-only role:
+
+```sh
+SUPABASE_DB_URL='postgres://...' npx supabase-grants-lint diff
+```
+
+Differences are [GL009](docs/rules/GL009.md) warnings; `doctor` adds a "Live database" section when
+given the same variable or `--db-url`. Setup and the role to create:
+[docs/live-mode.md](docs/live-mode.md).
 
 ## FAQ
 

@@ -3,10 +3,13 @@
  * (the resolved `since`, ADR-002 item 2 wording when there is none); Replay trap (GL007, plus the
  * local stack's `[api] auto_expose_new_tables` in `supabase/config.toml`, ADR-002 item 3); History
  * exposure (a dry run with `since: none` and `platformDefaults: explicit`: GL001 and GL002 on every
- * relation the migrations create); Next steps (the opt-in SQL and the `init` command).
+ * relation the migrations create); Next steps (the opt-in SQL and the `init` command). With a
+ * database URL (spec T11.1), a Live database section: its automatic grants for new tables and the
+ * drift GL009 finds.
  *
  * `doctor` informs and never fails, so config `rules`, `ignore` and inline suppressions hide
- * nothing here. It reads files inside the project only (G4).
+ * nothing here. It reads files inside the project only, and connects only when given a database
+ * URL (G4).
  */
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -15,14 +18,18 @@ import type { Config } from './config/defaults.js';
 import { quoteIdent, sqlGrantee } from './fix/sql.js';
 import { type LintOptions, loadProject } from './lint.js';
 import { toRelPath } from './load/discover.js';
+import { readLive } from './drift.js';
+import type { LiveSnapshot } from './live/snapshot.js';
+import { DML_PRIVILEGES } from './model/acl.js';
 import { LEGACY_DEFAULTS } from './model/defaults.js';
 import type { RelationName } from './model/relations.js';
 import { qualified } from './replay/context.js';
 import type { ReplayResult } from './replay/engine.js';
-import { replayWithWindow, type ResolvedSince } from './replay/since.js';
+import { replayWithWindow, type ResolvedSince, type WindowedReplay } from './replay/since.js';
 import { GL001 } from './rules/GL001.js';
 import { GL002 } from './rules/GL002.js';
 import { GL007 } from './rules/GL007.js';
+import { GL009 } from './rules/GL009.js';
 import { type Finding, runRules } from './rules/index.js';
 import { PARSE001 } from './rules/PARSE001.js';
 import { PARSE002 } from './rules/PARSE002.js';
@@ -71,6 +78,25 @@ export interface DoctorReport {
    * replay cannot check them.
    */
   readonly notCreated: readonly string[];
+  /** Only with a database URL. */
+  readonly live: LiveReport | null;
+}
+
+export interface LiveReport {
+  /** `server_version_num`. */
+  readonly serverVersion: number;
+  /**
+   * Per scoped schema, the API roles (client roles and the service role) that new tables created
+   * by `migrationRole` get any of select, insert, update, delete from automatically.
+   */
+  readonly autoGrants: readonly { readonly schema: string; readonly roles: readonly string[] }[];
+  /** GL009 findings. */
+  readonly drift: number;
+}
+
+export interface DoctorOptions extends LintOptions {
+  /** Read this database too (live mode). */
+  readonly dbUrl?: string;
 }
 
 /** In-scope relations the migrations grant on, revoke on or add policies to, but never create. */
@@ -95,7 +121,7 @@ export function referencedNotCreated(replay: ReplayResult): string[] {
 }
 
 /** Builds the report. Rejects with a `UsageError` (exit 2) for a bad config or path. */
-export async function diagnose(options: LintOptions = {}): Promise<DoctorReport> {
+export async function diagnose(options: DoctorOptions = {}): Promise<DoctorReport> {
   const project = await loadProject(options);
   const config: Config = { ...project.config, rules: {}, ignore: [] };
   const replay = replayWithWindow(project.inputs, { ...config, cliSince: project.cliSince });
@@ -137,6 +163,25 @@ export async function diagnose(options: LintOptions = {}): Promise<DoctorReport>
       unreachable: [...unreachable.values()],
     },
     notCreated: referencedNotCreated(replay),
+    live:
+      options.dbUrl === undefined
+        ? null
+        : liveReport(config, replay, await readLive(options.dbUrl, config.schemas)),
+  };
+}
+
+function liveReport(config: Config, replay: WindowedReplay, live: LiveSnapshot): LiveReport {
+  const apiRoles = [...new Set([...config.clientRoles, config.serviceRole])];
+  return {
+    serverVersion: live.serverVersion,
+    autoGrants: config.schemas.map((schema) => {
+      const acl = live.defaults.effective(config.migrationRole, schema, 'table');
+      return {
+        schema,
+        roles: apiRoles.filter((role) => DML_PRIVILEGES.some((p) => acl.holds(role, p))),
+      };
+    }),
+    drift: runRules({ config, replay, rules: [GL009], live }).findings.length,
   };
 }
 
@@ -368,6 +413,40 @@ function createdExposure(report: DoctorReport): string[] {
   ];
 }
 
+/** `server_version_num` as Postgres 10 and later print it: 170002 -> 17.2. */
+export function postgresVersion(num: number): string {
+  return `${String(Math.floor(num / 10000))}.${String(num % 10000)}`;
+}
+
+function liveDatabase(live: LiveReport, config: Config): string[] {
+  const lines = wrap(
+    `Read the database (Postgres ${postgresVersion(live.serverVersion)}), read-only.`,
+    '  ',
+  );
+  for (const { schema, roles } of live.autoGrants) {
+    lines.push(
+      ...wrap(
+        roles.length === 0
+          ? `New tables ${config.migrationRole} creates in schema ${schema} get no automatic ` +
+              'grants: the database is opted in, so every migration must grant what the Data API needs.'
+          : `New tables ${config.migrationRole} creates in schema ${schema} are still granted to ` +
+              `${roles.join(', ')} automatically: the database is not opted in yet.`,
+        '  ',
+      ),
+    );
+  }
+  lines.push(
+    ...wrap(
+      live.drift === 0
+        ? 'No drift: the database has the grants, default privileges and policies the migrations give.'
+        : `${plural(live.drift, 'difference')} between the database and the migrations (GL009); run ` +
+            `${keep(`${BIN} diff`)} to list them.`,
+      '  ',
+    ),
+  );
+  return lines;
+}
+
 function nextSteps(report: DoctorReport): string[] {
   const steps: string[][] = [];
   const step = (text: string, sql?: string): void => {
@@ -425,6 +504,9 @@ export function formatDoctor(report: DoctorReport, c: Colors = makeColors(false)
     ['Opt-in status', optInStatus(report)],
     ['Replay trap', replayTrap(report)],
     ['History exposure', historyExposure(report)],
+    ...(report.live === null
+      ? []
+      : [['Live database', liveDatabase(report.live, report.config)] as [string, string[]]]),
     ['Next steps', nextSteps(report)],
   ];
   const blocks = [

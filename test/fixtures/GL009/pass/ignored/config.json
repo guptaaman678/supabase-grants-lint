@@ -1,0 +1,9 @@
+{
+  "ignore": [
+    {
+      "rule": "GL009",
+      "relation": "public.notes",
+      "reason": "made by the analytics job, not by migrations"
+    }
+  ]
+}

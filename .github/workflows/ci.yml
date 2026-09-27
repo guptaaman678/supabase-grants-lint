@@ -37,6 +37,35 @@ jobs:
       - run: npm run build
       - run: npm test
 
+  # Live mode (diff, doctor --db-url) against a real Postgres server rather than the in-process
+  # PGlite the other jobs use. The server trusts local connections, so no password is stored.
+  live:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      GRANTS_LINT_TEST_DB_URL: postgres://postgres@localhost:5432/postgres
+      GRANTS_LINT_TEST_PG_MAJOR: '17'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run test/live test/e2e/live.test.ts test/golden/fixtures.test.ts test/golden/docs.test.ts
+
   package:
     strategy:
       fail-fast: false

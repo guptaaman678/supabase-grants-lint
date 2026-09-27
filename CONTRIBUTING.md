@@ -16,17 +16,17 @@ Node `>=22` is required (`.nvmrc` pins the version used in development).
 
 ## Commands
 
-| Command                           | Purpose                                                                       |
-| --------------------------------- | ----------------------------------------------------------------------------- |
-| `npm run build`                   | build the CLI and library with tsup                                           |
-| `npm test`                        | run the vitest suite                                                          |
-| `npm run test:watch`              | run tests in watch mode                                                       |
-| `npm run lint`                    | ESLint                                                                        |
-| `npm run typecheck`               | `tsc --noEmit` in strict mode                                                 |
-| `npm run format` / `format:check` | Prettier                                                                      |
-| `npm run mutation`                | Stryker mutation testing on `src/model`, `src/replay`, `src/rules`, `src/fix` |
-| `npm run bench`                   | cold-start `check` timings on generated projects of 100 and 500 migrations    |
-| `npm run corpus`                  | pinned corpus regression (network: fetches the projects in `test/corpus`)     |
+| Command                           | Purpose                                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `npm run build`                   | build the CLI and library with tsup                                                                                |
+| `npm test`                        | run the vitest suite                                                                                               |
+| `npm run test:watch`              | run tests in watch mode                                                                                            |
+| `npm run lint`                    | ESLint                                                                                                             |
+| `npm run typecheck`               | `tsc --noEmit` in strict mode                                                                                      |
+| `npm run format` / `format:check` | Prettier                                                                                                           |
+| `npm run mutation`                | Stryker mutation testing on `src/model`, `src/replay`, `src/rules`, `src/fix` and live mode's parsing (`src/live`) |
+| `npm run bench`                   | cold-start `check` timings on generated projects of 100 and 500 migrations                                         |
+| `npm run corpus`                  | pinned corpus regression (network: fetches the projects in `test/corpus`)                                          |
 
 ## Fixture layout
 
@@ -42,6 +42,13 @@ test/fixtures/GL001/fail/no-service-role-grant/
 `expected.json` lists the exact findings the fixture produces: rule, file,
 line, relation and role. A fixture with no matching finding belongs under
 `pass/`.
+
+GL009 (live mode) fixtures also run against a real Postgres: the test builds a
+database from the fixture's migrations, then runs its optional `database.sql`
+(changes made by hand). By default that is PGlite, Postgres compiled to
+WebAssembly, so no Docker is needed; set `GRANTS_LINT_TEST_DB_URL` to a server
+you own (for example `postgres://postgres@localhost:5432/postgres`) to use it
+instead, as the `live` CI job does. Each test gets a fresh database.
 
 ## Whole-project tests
 
@@ -182,6 +189,7 @@ kill them) are listed here. Every other surviving mutant gets a test.
 | `src/parse/adapter.ts` service-role-only classifier (ADR-012, run with `--mutate` on its line range) | `?? []` fallbacks for `A_Expr.name`, `FuncCall.funcname`, `TypeName.names`, `?? ''` for `SQLValueFunction.op`, `typeName?.` to `typeName.` | The parser always fills these fields, so the fallbacks and optional chains are never taken.                                                                  |
 | `src/parse/adapter.ts` `scalarSelect`                                                                | `select === undefined \|\| !('SelectStmt' in select)` or `target === undefined` to `false`                                                 | An `EXPR_SUBLINK` always has a `SelectStmt` subselect, and `targets.length !== 1` is checked first, so the guards only narrow types.                         |
 | `src/parse/adapter.ts` `operands`                                                                    | `name.length !== 1` to `false`                                                                                                             | A qualified operator name starts with its schema, so `name[0] !== op` already rejects it.                                                                    |
+| `src/live/acl-text.ts` `parseAclItem`                                                                | `bare = ''` or `letters = ''` defaults to another string                                                                                   | The pattern always sets `letters` (possibly empty), and sets `bare` whenever the grantee is not quoted, so neither default is ever used.                     |
 | `src/replay/engine.ts` `case 'Unknown'`                                                              | case removed or relabelled                                                                                                                 | The case only breaks out of the switch, which is what an unmatched statement does too.                                                                       |
 | `src/replay/handlers/move.ts` untracked move                                                         | `catalog.policiesOn(from).length > 0` to `true` or `>= 0`                                                                                  | With no relation, sequence or policy under the old name, `moveRelation` returns an equal catalog (owned sequences always belong to a tracked relation).      |
 | `src/replay/since.ts` `compareVersions`                                                              | `x.length < y.length` to `<=`                                                                                                              | Only reached when the lengths differ.                                                                                                                        |

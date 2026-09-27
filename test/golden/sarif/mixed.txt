@@ -110,6 +110,17 @@
               }
             },
             {
+              "id": "GL009",
+              "name": "drift",
+              "shortDescription": {
+                "text": "The live database has grants, default privileges or policies the migrations do not, or the reverse (diff and doctor --db-url only)."
+              },
+              "helpUri": "https://github.com/guptaaman678/supabase-grants-lint/blob/v<version>/docs/rules/GL009.md",
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
               "id": "PARSE001",
               "name": "unparseable-statement",
               "shortDescription": {
@@ -291,7 +302,7 @@
         },
         {
           "ruleId": "PARSE002",
-          "ruleIndex": 10,
+          "ruleIndex": 11,
           "level": "note",
           "message": {
             "text": "DO block not modelled; it mentions grant. The replay does not run it, so any grants, tables or policies it creates are not checked. Move those statements out of the block, or suppress this with a reason."
@@ -312,7 +323,7 @@
         },
         {
           "ruleId": "PARSE001",
-          "ruleIndex": 9,
+          "ruleIndex": 10,
           "level": "note",
           "message": {
             "text": "The replay skipped this statement because it could not be parsed (syntax error at or near \"tabel\" (line 6, column 8)), so any grant, table or policy in it is not checked. If Postgres accepts it, please report it as a bug."

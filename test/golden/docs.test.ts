@@ -6,8 +6,10 @@
  * duration normalised). The blocks under "Fix" are applied on top and the rule must go quiet.
  *
  * A SQL block names its file on its first line (`-- supabase/migrations/<name>.sql`); a
- * `json grants-lint.config.json` block is the project config. Regenerate the output blocks with
- * `UPDATE_GOLDEN=1`.
+ * `json grants-lint.config.json` block is the project config. A SQL block starting
+ * `-- run in the database` is a change made by hand: the example then builds a real database from
+ * the migrations plus that SQL and runs `diff` (live mode, GL009). Regenerate the output blocks
+ * with `UPDATE_GOLDEN=1`.
  */
 import {
   existsSync,
@@ -22,9 +24,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { drift } from '../../src/drift.js';
 import { lint } from '../../src/lint.js';
 import { formatPretty } from '../../src/report/pretty.js';
 import { docsUrl, RULES } from '../../src/rules/index.js';
+import type { TestDatabase } from '../support/database.js';
+import { databaseFor } from '../support/live-project.js';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
 const RULE_DOCS = path.join(REPO, 'docs', 'rules');
@@ -39,7 +44,7 @@ const SECTIONS = [
   'Configuration',
 ];
 
-const REFERENCE_DOCS = ['configuration.md', 'how-it-works.md', 'faq.md'];
+const REFERENCE_DOCS = ['configuration.md', 'how-it-works.md', 'faq.md', 'live-mode.md'];
 
 interface Block {
   readonly lang: string;
@@ -86,6 +91,7 @@ function projectFiles(section: Section): Map<string, string> {
     if (block.lang === 'sql') {
       const name = /^-- (supabase\/migrations\/\S+\.sql)\n/.exec(block.body)?.[1];
       if (name !== undefined) files.set(name, block.body);
+      else if (block.body.startsWith(BY_HAND)) files.set(BY_HAND, block.body);
     } else if (block.lang === 'json' && block.meta === 'grants-lint.config.json') {
       files.set('grants-lint.config.json', block.body);
     }
@@ -93,18 +99,29 @@ function projectFiles(section: Section): Map<string, string> {
   return files;
 }
 
-const temps: string[] = [];
+/** The first line of a SQL block that runs in the database, not in a migration. */
+const BY_HAND = '-- run in the database';
 
-afterAll(() => {
+const temps: string[] = [];
+const databases: TestDatabase[] = [];
+
+afterAll(async () => {
   for (const dir of temps) rmSync(dir, { recursive: true, force: true });
+  await Promise.all(databases.map((db) => db.close()));
 });
 
 async function lintProject(files: Map<string, string>) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'grants-lint-docs-'));
   temps.push(dir);
   mkdirSync(path.join(dir, 'supabase', 'migrations'), { recursive: true });
-  for (const [name, body] of files) writeFileSync(path.join(dir, name), body);
-  return lint({ cwd: dir, dir });
+  for (const [name, body] of files) {
+    if (name !== BY_HAND) writeFileSync(path.join(dir, name), body);
+  }
+  const byHand = files.get(BY_HAND);
+  if (byHand === undefined) return lint({ cwd: dir, dir });
+  const db = await databaseFor(dir, [byHand]);
+  databases.push(db);
+  return drift({ cwd: dir, dir, dbUrl: db.url });
 }
 
 /** The docs link names the release and the summary a duration; neither is part of the example. */

@@ -7,6 +7,7 @@ const COMMANDS = `Usage: ${BIN} <command> [options]
 Commands:
   check     lint migrations for missing Data API grants
   doctor    readiness report for 2026-10-30
+  diff      compare the migrations with a live database (read-only)
   explain   grant timeline for one relation
   init      write a config file and a GitHub workflow
 
@@ -26,6 +27,8 @@ const DISCOVERY_OPTIONS = `  --dir <path>          project directory, or its mig
   --since <version>     enforce files after this version; "none" enforces every file
   --schema <name>       schema to check, repeatable (default: public)
   --no-color            plain output (also when NO_COLOR is set or output is not a terminal)`;
+
+const DB_URL_OPTION = `  --db-url <url>        database to read, postgres://... (default: SUPABASE_DB_URL); never printed`;
 
 /** `<command> --help` text. */
 export const COMMAND_USAGE = {
@@ -53,10 +56,32 @@ Examples:
 Readiness report for 2026-10-30: opt-in status, replay trap, history exposure, next steps.
 
 Options:
+${DB_URL_OPTION} (optional: adds the live database's
+                        automatic grants and drift)
 ${DISCOVERY_OPTIONS}
 
-Example:
+Examples:
   ${BIN} doctor
+  SUPABASE_DB_URL=postgres://... ${BIN} doctor
+`,
+  diff: `Usage: ${BIN} diff [options]
+
+Compares the migrations with a live database, read-only: privileges, default privileges and
+policies that differ are reported as GL009 warnings. Use a read-only role.
+
+Options:
+${DB_URL_OPTION}
+${DISCOVERY_OPTIONS}
+  --format <format>     pretty, json, sarif or github (default: pretty)
+  --max-warnings <n>    exit 1 when there are more than n warnings (0 fails on any drift)
+  --quiet               report errors only
+
+Exit codes: 0 no errors, 1 findings over the threshold, 2 usage, config or connection error,
+3 internal error.
+
+Examples:
+  SUPABASE_DB_URL=postgres://... ${BIN} diff
+  ${BIN} diff --max-warnings 0 --format github
 `,
   explain: `Usage: ${BIN} explain <schema.relation> [options]
 

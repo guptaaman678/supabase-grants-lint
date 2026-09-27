@@ -18,6 +18,10 @@ No. `check`, `doctor` and `explain` read your migration files and your config, a
 They open no network connection, send no telemetry and check for no updates. The replay happens in
 memory, in a model of the grants, not in a database.
 
+The one exception is opt-in: [live mode](live-mode.md) (`diff`, or `doctor` given `--db-url` or
+`SUPABASE_DB_URL`) connects to the database you pass, reads the system catalogs in a read-only
+transaction and changes nothing.
+
 ## Why does it flag my old migrations?
 
 It should not: the rules that check new relations only enforce migrations after the

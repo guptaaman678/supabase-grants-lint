@@ -4,6 +4,7 @@
  * ordering. Rules never change the model: the catalog is immutable and the context is frozen.
  */
 import type { Config, RuleId } from '../config/defaults.js';
+import type { LiveSnapshot } from '../live/snapshot.js';
 import type { DiscoveryNotice } from '../load/discover.js';
 import type { Grantee } from '../model/acl.js';
 import type { RelationName } from '../model/relations.js';
@@ -34,6 +35,8 @@ export interface RuleContext {
   isClientRole(role: Grantee): boolean;
   /** Config `serviceOnly`: exempt from GL002 and GL003 for client roles. */
   isServiceOnly(name: RelationName): boolean;
+  /** Live mode only (`diff`, `doctor --db-url`): the database GL009 compares with. */
+  readonly live?: LiveSnapshot;
 }
 
 /** What a rule reports. The framework adds the rule ID, severity and docs URL. */

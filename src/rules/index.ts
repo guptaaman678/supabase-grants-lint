@@ -6,6 +6,7 @@
  */
 import { type Config, RULE_IDS, type RuleId } from '../config/defaults.js';
 import { ConfigError } from '../errors.js';
+import type { LiveSnapshot } from '../live/snapshot.js';
 import type { DiscoveryNotice } from '../load/discover.js';
 import { type Grantee, PUBLIC } from '../model/acl.js';
 import type { RelationName } from '../model/relations.js';
@@ -26,6 +27,7 @@ import { GL005 } from './GL005.js';
 import { GL006 } from './GL006.js';
 import { GL007 } from './GL007.js';
 import { GL008 } from './GL008.js';
+import { GL009 } from './GL009.js';
 import { PARSE001 } from './PARSE001.js';
 import { PARSE002 } from './PARSE002.js';
 import type {
@@ -51,6 +53,7 @@ export const RULES: readonly Rule[] = [
   GL006,
   GL007,
   GL008,
+  GL009,
   PARSE001,
   PARSE002,
 ];
@@ -88,6 +91,7 @@ export function createContext(
   config: Config,
   replay: WindowedReplay,
   discovery: readonly DiscoveryNotice[] = [],
+  live?: LiveSnapshot,
 ): RuleContext {
   const files = Object.freeze(
     replay.files.map((file): FileContext =>
@@ -100,6 +104,7 @@ export function createContext(
     files,
     enforced: Object.freeze(files.filter((file) => file.enforced)),
     discovery: Object.freeze([...discovery]),
+    ...(live === undefined ? {} : { live }),
     inScope: (name: RelationName) => replay.inScope(name),
     isClientRole: (role: Grantee) => typeof role === 'string' && config.clientRoles.includes(role),
     isServiceOnly: (name: RelationName) =>
@@ -120,6 +125,8 @@ export interface RunRulesOptions {
   readonly strictParse?: boolean;
   /** Defaults to `RULES`. */
   readonly rules?: readonly Rule[];
+  /** Live mode: the database to compare the migrations with (GL009). */
+  readonly live?: LiveSnapshot;
 }
 
 /** A finding before suppression, keeping the resolved relation for matching. */
@@ -142,6 +149,7 @@ export function runRules(options: RunRulesOptions): RuleRunResult {
     discovery = [],
     strictParse = false,
     rules = RULES,
+    live,
   } = options;
   if (suppressionProblems.length > 0) throw suppressionError(suppressionProblems);
   const reasonless = config.ignore.flatMap((entry, i) =>
@@ -156,7 +164,7 @@ export function runRules(options: RunRulesOptions): RuleRunResult {
   );
   if (reasonless.length > 0) throw new ConfigError('options.config', reasonless);
 
-  const ctx = createContext(config, replay, discovery);
+  const ctx = createContext(config, replay, discovery, live);
   const ran = new Set<RuleId>();
   let candidates: Candidate[] = [];
   for (const rule of rules) {

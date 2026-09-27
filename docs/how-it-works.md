@@ -1,8 +1,9 @@
 # How it works
 
-`supabase-grants-lint` never connects to a database. It parses your migrations with the Postgres
-parser, replays them in order into a model of who holds which privilege on which relation, and
-checks that model at the end of each migration.
+`supabase-grants-lint check` never connects to a database. It parses your migrations with the
+Postgres parser, replays them in order into a model of who holds which privilege on which relation,
+and checks that model at the end of each migration. [Live mode](live-mode.md) compares the same
+model with a real database, read-only, when you ask it to.
 
 ## The replay model
 
