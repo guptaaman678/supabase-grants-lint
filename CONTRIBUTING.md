@@ -119,31 +119,33 @@ Every push to `main` runs `.github/workflows/release.yml`
    changeset files. Nothing is published yet.
 2. A maintainer reviews and merges the Version Packages PR like any other
    PR.
-3. That merge re-runs the workflow. With no changesets left to version, it
-   runs the `publish` command (`npm run release`, which is `changeset
-publish`): this publishes the package to npm with provenance (via OIDC
-   trusted publishing, `id-token: write`, no npm token in the repository),
-   creates the git tag `vX.Y.Z`, and creates a GitHub Release from the
-   changelog entries.
-4. A final step moves the floating major-version tag used by the GitHub
-   Action (for example `v0`, later `v1`) to point at the new release tag,
-   so `uses: guptaaman678/supabase-grants-lint@v0` always runs the latest
-   released `0.x` version.
-5. Tick the Marketplace listing checkbox on the new release (GitHub UI,
-   Releases page).
+3. That merge re-runs the workflow. With no changesets left to version and
+   the new version neither on npm nor tagged yet, it runs `npm stage publish
+--provenance --access public`. This uploads the package to npm's staging
+   queue through trusted publishing (OIDC, `id-token: write`, no npm token in
+   the repository). The trusted publisher is configured as stage-only, so CI
+   cannot make a version live by itself. The workflow then pushes the git tag
+   `vX.Y.Z` at the merge commit.
+4. A maintainer reviews the staged version on npmjs.com (or with `npm stage
+list` and `npm stage view`) and approves it with 2FA (`npm stage approve`
+   works too). Only then is the version live on npm.
+5. The next run of the workflow after approval (any push to `main`, or a
+   manual run from the Actions tab) sees the version live on npm and moves the
+   floating major-version tag used by the GitHub Action (for example `v0`,
+   later `v1`) to the release tag, so `uses:
+guptaaman678/supabase-grants-lint@v0` always runs a version that is on
+   npm.
+6. A maintainer creates the GitHub Release for `vX.Y.Z` from its
+   `CHANGELOG.md` entry, with "Publish this Action to the GitHub Marketplace"
+   ticked.
 
-The very first publish (0.1.0) is done by hand by a maintainer, because npm
-trusted publishing can only be configured once the package already exists on
-the registry. Merging the Version Packages PR still triggers the workflow's
-`publish` step, but it has no trusted publisher configured yet, so it fails
-there as expected (nothing is published by CI). The maintainer then publishes
-from a clean checkout of the merge commit (`npm ci && npm run build && npm
-publish`, 2FA), and only afterwards pushes the tags `v0.1.0` and `v0` at that
-commit and creates the GitHub Release by hand, since the workflow's own
-tagging and release steps never ran. It therefore has no provenance. Once
-0.1.0 exists on the registry, the maintainer configures npm trusted
-publishing for `release.yml`; 0.1.1 onward is published by this workflow with
-provenance, and its tagging and release steps run normally.
+If a staged version is rejected, delete its `vX.Y.Z` tag before fixing and
+releasing again; the workflow skips staging while that tag exists.
+
+The very first publish (0.1.0) was done by hand, because npm trusted
+publishing can only be configured once the package already exists on the
+registry. That version has no provenance; 0.1.1 onward is staged by this
+workflow with provenance.
 
 ## Triage expectations
 
