@@ -69,8 +69,11 @@ async function pglite(): Promise<TestDatabase> {
   const socket = new PGLiteSocketServer({ db, port: 0, host: '127.0.0.1' });
   await socket.start();
   const { port } = socket as unknown as { port: number };
+  const url = new URL(`postgres://127.0.0.1:${String(port)}/postgres`);
+  url.username = 'postgres';
+  url.password = PLACEHOLDER_PASSWORD;
   return {
-    url: `postgres://postgres:${PLACEHOLDER_PASSWORD}@127.0.0.1:${String(port)}/postgres`,
+    url: url.toString(),
     exec: async (sql) => {
       await db.exec(sql);
     },
