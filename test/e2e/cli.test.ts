@@ -232,11 +232,8 @@ describe('running without --dir (T9.8)', () => {
     expect(stderr).toBe('');
     expect(stdout).toMatch(/warn +GL001 +public\.todos/);
     expect(stdout).not.toContain('seed.sql');
-    expect(summary(stdout)).toMatch(
-      new RegExp(
-        `^0 errors, 1 warning {2}\\(2 files, 1 relation, [0-9.]+s, project root ${up.replace(/\./g, '\\.')}\\)$`,
-      ),
-    );
+    expect(summary(stdout)).toMatch(/^0 errors, 1 warning {2}\(2 files, 1 relation, [0-9.]+s, /);
+    expect(summary(stdout)?.endsWith(`s, project root ${up})`)).toBe(true);
     expect(code).toBe(0);
     const doctor = cli(['doctor'], {}, cwd);
     expect(doctor.stdout).toContain(`Replayed 2 migration files (project root ${up}):`);
