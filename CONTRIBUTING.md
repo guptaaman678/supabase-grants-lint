@@ -147,13 +147,42 @@ publishing can only be configured once the package already exists on the
 registry. That version has no provenance; 0.1.1 onward is staged by this
 workflow with provenance.
 
-## Triage expectations
+## Maintenance policy
+
+### Triage
 
 Reports are triaged in the order: internal errors and crashes, then false
-positives and parser failures, then everything else. The target first
-response time and the policy for closing issues are documented in the
-project's maintenance policy once it is published; until then, expect a reply
-within a few days.
+positives and parser failures, then everything else. The target for a first
+response is 72 hours during the first two months after the 0.1.0 release,
+and one week after that. Security reports go through private vulnerability
+reporting (see `SECURITY.md`), not public issues.
+
+### False positives
+
+Every confirmed false positive becomes a fixture first: a case under
+`test/fixtures/<RULE>/pass/` (or an updated `expected.json`) that reproduces
+the report and fails on the current code. The fix follows in the same pull
+request, and the fixture stays so the false positive cannot come back.
+
+### Rule IDs and removals
+
+- Rule IDs (`GL000`, `GL001`, ..., `PARSE001`, ...) are never reused, even
+  after a rule is removed.
+- A rule, config key, CLI flag or output field is removed only in a major
+  release, and only after an earlier release has printed a deprecation
+  warning for it.
+
+### Scope
+
+This project checks grants and whether RLS policies are reachable through the
+Data API, from a project's migrations. Requests
+outside that are out of scope and are pointed elsewhere:
+
+- lock safety and general migration linting:
+  [squawk](https://github.com/sbdchd/squawk)
+- advisories on a live database (security and performance):
+  [splinter](https://github.com/supabase/splinter), which powers the Supabase
+  dashboard's advisors
 
 ## Mutation testing
 
