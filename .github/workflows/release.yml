@@ -52,9 +52,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # changesets/action v2 names this output `has-changesets` (v1 used `hasChangesets`);
+      # reading the old name yields an empty string, so the release steps never ran.
       - name: Work out the release state
         id: state
-        if: steps.changesets.outputs.hasChangesets == 'false'
+        if: steps.changesets.outputs.has-changesets == 'false'
         run: |
           set -euo pipefail
           NAME=$(node -p "require('./package.json').name")
