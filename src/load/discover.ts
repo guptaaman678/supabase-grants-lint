@@ -5,6 +5,9 @@ import { globFiles, hasGlobMagic, isFileEntry } from './glob.js';
 
 export const DEFAULT_MIGRATIONS = 'supabase/migrations';
 
+/** Files that mark a project root. `config/defaults.ts` imports this module, hence the copy of its name. */
+export const PROJECT_MARKERS = ['grants-lint.config.json', 'package.json'] as const;
+
 export interface MigrationFile {
   /** Absolute path, platform separators. */
   readonly path: string;
@@ -70,19 +73,43 @@ export function compareMigrations(a: MigrationFile, b: MigrationFile): number {
   return compareStrings(a.name, b.name) || compareStrings(a.relPath, b.relPath);
 }
 
+function exists(abs: string): boolean {
+  return statSync(abs, { throwIfNoEntry: false }) !== undefined;
+}
+
+function isDirectory(abs: string): boolean {
+  return statSync(abs, { throwIfNoEntry: false })?.isDirectory() === true;
+}
+
 /**
- * True when `dir` has no `supabase/migrations` but holds `.sql` files itself: `--dir` was given the
- * migrations folder rather than the project root, so the default `migrations` means `dir`. Only
- * for an explicit `--dir`, so stray `.sql` files in the working directory are never linted.
+ * True when `dir` has no `supabase/migrations` but holds `.sql` files itself: the project
+ * directory is the migrations folder rather than the project root, so the default `migrations`
+ * means `dir` (`--dir supabase/migrations`, or running from a folder of migrations).
  */
-function isMigrationsFolder(dir: string): boolean {
-  if (statSync(path.join(dir, DEFAULT_MIGRATIONS), { throwIfNoEntry: false }) !== undefined) {
-    return false;
-  }
-  if (statSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return false;
+export function isMigrationsFolder(dir: string): boolean {
+  if (exists(path.join(dir, DEFAULT_MIGRATIONS)) || !isDirectory(dir)) return false;
   return readdirSync(dir, { withFileTypes: true }).some(
     (dirent) => isSqlFile(dirent.name) && isFileEntry(dirent, path.join(dir, dirent.name)),
   );
+}
+
+/**
+ * The project directory when no `--dir` is given. `cwd` itself when it has `supabase/migrations`,
+ * a `grants-lint.config.json` or a `package.json`; otherwise the folder that contains `supabase/`
+ * when `cwd` is `supabase/migrations` or `supabase/` (so its config and `config.toml` are read
+ * too, and `supabase/seed.sql` is not mistaken for the migrations); otherwise `cwd`.
+ */
+export function findProjectDir(cwd: string): string {
+  const here = (name: string): boolean => exists(path.join(cwd, name));
+  if ([DEFAULT_MIGRATIONS, ...PROJECT_MARKERS].some(here)) return cwd;
+  const parent = path.dirname(cwd);
+  if (path.basename(cwd) === 'migrations' && path.basename(parent) === 'supabase') {
+    return path.dirname(parent);
+  }
+  if (path.basename(cwd) === 'supabase' && isDirectory(path.join(cwd, 'migrations'))) {
+    return parent;
+  }
+  return cwd;
 }
 
 export function discoverMigrations(options: DiscoverOptions = {}): Discovery {
@@ -90,7 +117,7 @@ export function discoverMigrations(options: DiscoverOptions = {}): Discovery {
   const projectDir = path.resolve(cwd, options.projectDir ?? '.');
   const raw = options.migrations ?? DEFAULT_MIGRATIONS;
   const entries =
-    raw === DEFAULT_MIGRATIONS && projectDir !== cwd && isMigrationsFolder(projectDir)
+    raw === DEFAULT_MIGRATIONS && isMigrationsFolder(projectDir)
       ? ['.']
       : typeof raw === 'string'
         ? [raw]
@@ -117,7 +144,8 @@ export function discoverMigrations(options: DiscoverOptions = {}): Discovery {
     if (stat === undefined) {
       throw new UsageError(
         `Migrations directory not found: ${toRelPath(cwd, abs) || '.'}. ` +
-          'Run from the project root, pass --dir <project>, or set "migrations" in the config.',
+          'Run from the project root (the folder that contains supabase/), ' +
+          'or pass --dir <project or migrations folder>.',
       );
     }
     if (stat.isDirectory()) {

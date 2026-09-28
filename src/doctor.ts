@@ -13,7 +13,7 @@ import path from 'node:path';
 import { type Colors, colors as makeColors } from './cli/color.js';
 import type { Config } from './config/defaults.js';
 import { quoteIdent, sqlGrantee } from './fix/sql.js';
-import { type LintOptions, loadProject } from './lint.js';
+import { type DetectedLocation, type LintOptions, loadProject } from './lint.js';
 import { toRelPath } from './load/discover.js';
 import { LEGACY_DEFAULTS } from './model/defaults.js';
 import type { RelationName } from './model/relations.js';
@@ -46,6 +46,8 @@ export interface LocalStack {
 
 export interface DoctorReport {
   readonly config: Config;
+  /** Set when no `--dir` was given and the migrations were not `./supabase/migrations`. */
+  readonly location?: DetectedLocation;
   readonly files: number;
   /** In-scope relations that exist after the last migration. */
   readonly relations: number;
@@ -124,6 +126,7 @@ export async function diagnose(options: LintOptions = {}): Promise<DoctorReport>
 
   return {
     config: project.config,
+    ...(project.location === undefined ? {} : { location: project.location }),
     files: project.inputs.length,
     relations: replay.final.relations().filter((relation) => replay.inScope(relation)).length,
     since: replay.since,
@@ -412,11 +415,13 @@ function nextSteps(report: DoctorReport): string[] {
 /** The report as text, at most `WIDTH` columns wide. Section titles are bold when colour is on. */
 export function formatDoctor(report: DoctorReport, c: Colors = makeColors(false)): string {
   const schemas = report.config.schemas;
+  const where =
+    report.location === undefined ? '' : ` (${report.location.kind} ${report.location.path})`;
   const intro =
     report.files === 0
-      ? ['No migration files found.']
+      ? [`No migration files found${where}.`]
       : wrap(
-          `Replayed ${plural(report.files, 'migration file')}: ` +
+          `Replayed ${plural(report.files, 'migration file')}${where}: ` +
             `${plural(report.relations, 'relation')} in ` +
             `${schemas.length === 1 ? 'schema' : 'schemas'} ${schemas.join(', ')} after the last one.`,
           '',
