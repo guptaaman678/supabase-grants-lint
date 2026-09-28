@@ -1,0 +1,37 @@
+# Throwaway check: the published action through the floating v0 tag, as a user would reference it.
+# Lives only on this pull request branch; never merged.
+name: v0 smoke
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  published-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the published action on a fixture with a missing grant
+        id: lint
+        continue-on-error: true
+        uses: guptaaman678/supabase-grants-lint@v0
+        with:
+          working-directory: test/e2e/projects/errors
+          sarif: 'false'
+      - name: Assert the published version, the failure and one error
+        run: |
+          supabase-grants-lint --version
+          if [ "$(supabase-grants-lint --version)" != "0.1.1" ]; then
+            echo "expected @v0 to install 0.1.1" >&2
+            exit 1
+          fi
+          if [ "${{ steps.lint.outcome }}" != "failure" ]; then
+            echo "expected the action to fail on test/e2e/projects/errors" >&2
+            exit 1
+          fi
+          if [ "${{ steps.lint.outputs.errors }}" != "1" ]; then
+            echo "expected exactly 1 error, got '${{ steps.lint.outputs.errors }}'" >&2
+            exit 1
+          fi
