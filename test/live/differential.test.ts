@@ -15,6 +15,9 @@
  * - the announced platform revoke, before the file where the replay assumes it (ADR-002 item 1);
  * - not the statements the replay reports and skips: unparseable ones (PARSE001, which Postgres
  *   rejects too) and dynamic SQL (PARSE002). They are blanked, keeping every line where it was.
+ *
+ * Fixtures that name the MAINTAIN privilege are Postgres 17 SQL; on Postgres 15 the test asserts
+ * the server rejects them for that reason, and nothing else.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -302,12 +305,32 @@ const REJECTED_BY_POSTGRES: Readonly<Record<string, RegExp>> = {
   'GL003/fail/policy-before-table-created': /relation "public\.orders" does not exist/,
 };
 
+/** Fixtures that name the MAINTAIN privilege, which Postgres 17 added: older servers reject them. */
+const NEEDS_POSTGRES_17: readonly string[] = [
+  'GL001/fail/platform-revoke-and-migration-revoke',
+  'GL008/fail/postgres-17-maintain-granted',
+  'GL008/pass/postgres-17-maintain-revoked',
+  'GL009/fail/granted-by-hand',
+];
+
+let serverMajor: number | undefined;
+
+async function databaseMajor(): Promise<number> {
+  if (serverMajor === undefined) {
+    const db = await startDatabase();
+    open.push(db);
+    serverMajor = Math.floor((await readLive(db.url, ['public'])).serverVersion / 10000);
+  }
+  return serverMajor;
+}
+
 describe('the replay model equals a real Postgres after every file', () => {
   it('covers every rule fixture', () => {
     expect(FIXTURES.length).toBeGreaterThan(200);
     for (const fixture of [
       ...Object.keys(MADE_OUTSIDE_MIGRATIONS),
       ...Object.keys(REJECTED_BY_POSTGRES),
+      ...NEEDS_POSTGRES_17,
     ]) {
       expect(FIXTURES).toContain(fixture);
     }
@@ -323,7 +346,10 @@ describe('the replay model equals a real Postgres after every file', () => {
   });
 
   it.each(FIXTURES)('%s', async (fixture) => {
-    const rejected = REJECTED_BY_POSTGRES[fixture];
+    const rejected =
+      NEEDS_POSTGRES_17.includes(fixture) && (await databaseMajor()) < 17
+        ? /unrecognized privilege type "maintain"/
+        : REJECTED_BY_POSTGRES[fixture];
     if (rejected === undefined) await compare(fixture);
     else await expect(compare(fixture)).rejects.toThrow(rejected);
   });
