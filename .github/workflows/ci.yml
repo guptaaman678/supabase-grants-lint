@@ -66,6 +66,43 @@ jobs:
       - run: npm ci
       - run: npx vitest run test/live test/e2e/live.test.ts test/golden/fixtures.test.ts test/golden/docs.test.ts
 
+  # Differential test: every fixture's migrations on a real Postgres, whose grants must equal the
+  # replay model after each file. Postgres 15 is the oldest a Supabase project runs, 17 the newest.
+  differential:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: '15'
+            image: postgres:15@sha256:724292da1f2e50bdccfc3302ce75bbba7f4a6076701b588cc795fcac65683550
+          - postgres: '17'
+            image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      GRANTS_LINT_TEST_DB_URL: postgres://postgres@localhost:5432/postgres
+      GRANTS_LINT_TEST_PG_MAJOR: ${{ matrix.postgres }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run test/live/differential.test.ts
+
   package:
     strategy:
       fail-fast: false

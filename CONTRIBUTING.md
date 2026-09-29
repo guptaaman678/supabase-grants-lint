@@ -50,6 +50,13 @@ WebAssembly, so no Docker is needed; set `GRANTS_LINT_TEST_DB_URL` to a server
 you own (for example `postgres://postgres@localhost:5432/postgres`) to use it
 instead, as the `live` CI job does. Each test gets a fresh database.
 
+Every other fixture runs against a real Postgres too, in
+`test/live/differential.test.ts`: its migrations are applied file by file, and
+after each file the database's grants, default privileges and policies must
+equal the replay model's. The `differential` CI job runs it on Postgres 15
+and 17. If a new fixture fails there, the model is wrong (or the fixture's SQL
+is not valid Postgres): fix the model rather than the comparison.
+
 ## Whole-project tests
 
 `test/e2e/apps/<app>/` holds small but complete Supabase projects (a todo
