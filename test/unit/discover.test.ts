@@ -8,6 +8,7 @@ import {
   compareMigrations,
   discoverMigrations,
   extractVersion,
+  findProjectDir,
   type MigrationFile,
   toRelPath,
 } from '../../src/load/discover.js';
@@ -208,16 +209,18 @@ describe('discoverMigrations: directory', () => {
     ]);
   });
 
-  it('never falls back to the working directory itself, or when migrations is configured', () => {
-    touch('seed.sql', 'db/001_add_todos.sql');
+  it('treats the working directory holding .sql files as the migrations folder (T9.8)', () => {
+    touch('002_add_orders.sql', '001_add_todos.sql', 'notes.txt');
     for (const options of [{}, { projectDir: '.' }, { projectDir: root }]) {
-      expect((catchError(() => names(options)) as UsageError).message).toContain(
-        'Migrations directory not found: supabase/migrations',
-      );
+      expect(names(options)).toEqual(['001_add_todos.sql', '002_add_orders.sql']);
     }
+  });
+
+  it('never falls back to the folder when migrations is configured', () => {
+    touch('db/001_add_todos.sql');
     expect((catchError(() => names({ projectDir: 'db', migrations: 'x' })) as Error).message).toBe(
-      'Migrations directory not found: db/x. Run from the project root, pass --dir <project>, ' +
-        'or set "migrations" in the config.',
+      'Migrations directory not found: db/x. Run from the project root (the folder that ' +
+        'contains supabase/), or pass --dir <project or migrations folder>.',
     );
   });
 
@@ -338,6 +341,38 @@ describe('ordering', () => {
     expect(compareMigrations(file('9_z.sql'), file('0.sql'))).toBe(-1);
     expect(compareMigrations(file('0.sql'), file('9_z.sql'))).toBe(1);
     expect(compareMigrations(file('1_a.sql'), file('1_a.sql'))).toBe(0);
+  });
+});
+
+describe('findProjectDir (T9.8)', () => {
+  const at = (rel: string) => path.join(root, ...rel.split('/'));
+
+  it('keeps a folder that has supabase/migrations, a config or a package.json', () => {
+    touch('app/supabase/migrations/001_a.sql', 'cfg/grants-lint.config.json', 'pkg/package.json');
+    for (const dir of ['app', 'cfg', 'pkg']) expect(findProjectDir(at(dir))).toBe(at(dir));
+  });
+
+  it('goes up from supabase/migrations and supabase/ to the folder that contains supabase/', () => {
+    touch('app/supabase/migrations/001_a.sql', 'app/supabase/seed.sql');
+    expect(findProjectDir(at('app/supabase/migrations'))).toBe(at('app'));
+    expect(findProjectDir(at('app/supabase'))).toBe(at('app'));
+  });
+
+  it('goes up from an empty supabase/migrations too', () => {
+    mkdirSync(at('app/supabase/migrations'), { recursive: true });
+    expect(findProjectDir(at('app/supabase/migrations'))).toBe(at('app'));
+  });
+
+  it('stays in a supabase/ folder without migrations, a migrations folder elsewhere, or any other folder', () => {
+    touch('a/supabase/seed.sql', 'b/db/migrations/001_a.sql', 'c/x.sql');
+    expect(findProjectDir(at('a/supabase'))).toBe(at('a/supabase'));
+    expect(findProjectDir(at('b/db/migrations'))).toBe(at('b/db/migrations'));
+    expect(findProjectDir(at('c'))).toBe(at('c'));
+  });
+
+  it('stays when supabase/migrations itself holds a config', () => {
+    touch('app/supabase/migrations/001_a.sql', 'app/supabase/migrations/grants-lint.config.json');
+    expect(findProjectDir(at('app/supabase/migrations'))).toBe(at('app/supabase/migrations'));
   });
 });
 

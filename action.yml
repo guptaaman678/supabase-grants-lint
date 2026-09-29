@@ -1,7 +1,6 @@
 name: 'Supabase Grants Lint'
-description: >-
-  Replays Supabase SQL migrations and flags tables the Data API cannot reach once auto-grants are
-  gone (PostgREST 42501). Not affiliated with or endorsed by Supabase.
+# GitHub Marketplace rejects descriptions over 125 characters (test/unit/action.test.ts).
+description: 'Flags Supabase migrations whose tables the Data API cannot reach without auto-grants. Not affiliated with Supabase.'
 author: 'Aman Gupta'
 branding:
   icon: 'shield'
@@ -52,7 +51,7 @@ runs:
   using: 'composite'
   steps:
     - name: Set up Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: '22'
 
@@ -109,7 +108,7 @@ runs:
         echo "sarif-file=${{ inputs.working-directory }}/grants-lint.sarif" >> "$GITHUB_OUTPUT"
 
     - name: Upload SARIF to the Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
       if: always() && inputs.sarif == 'true'
       continue-on-error: true
       with:

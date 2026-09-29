@@ -12,6 +12,13 @@ made with `supabase db pull` can turn them back on when the migrations are repla
 ([GL007](rules/GL007.md)). A project that never had automatic grants can set
 `"since": "none"` and `"platformDefaults": "explicit"`, so every migration is enforced.
 
+## Where do I run it?
+
+Run it from your project root, the folder that contains `supabase/`, or pass `--dir`. `--dir`
+takes either the project root or the migrations folder itself. Run from inside `supabase/` or
+`supabase/migrations`, it finds the project root above and says so in its summary line; run from
+any other folder of `.sql` files, it lints that folder, exactly as `--dir <that folder>` does.
+
 ## Does it touch my database?
 
 No. `check`, `doctor` and `explain` read your migration files and your config, and nothing else.

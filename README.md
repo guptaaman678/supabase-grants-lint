@@ -24,6 +24,8 @@ npx supabase-grants-lint check
 npx supabase-grants-lint doctor
 ```
 
+Run it from your project root, the folder that contains `supabase/`, or pass `--dir`.
+
 - `check` lints the migrations and exits 1 on an error finding.
 - `doctor` is a readiness report for 2026-10-30: whether the project is opted in, whether replaying
   the history turns automatic grants back on, and which existing tables a fresh database would not

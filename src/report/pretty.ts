@@ -72,11 +72,16 @@ export function formatPretty(result: LintResult, options: PrettyOptions = {}): s
   return `${blocks.map((block) => block.join('\n')).join('\n\n')}\n`;
 }
 
-/** `1 error, 0 warnings  (74 files, 61 relations, 0.4s)` */
+/**
+ * `1 error, 0 warnings  (74 files, 61 relations, 0.4s)`, plus `, project root ../..` when the
+ * project was found above the working directory.
+ */
 export function summaryLine(result: LintResult): string {
   const { errors, warnings, files, relations, durationMs } = result.summary;
+  const where =
+    result.location === undefined ? '' : `, ${result.location.kind} ${result.location.path}`;
   return (
     `${plural(errors, 'error')}, ${plural(warnings, 'warning')}  ` +
-    `(${plural(files, 'file')}, ${plural(relations, 'relation')}, ${(durationMs / 1000).toFixed(1)}s)`
+    `(${plural(files, 'file')}, ${plural(relations, 'relation')}, ${(durationMs / 1000).toFixed(1)}s${where})`
   );
 }
