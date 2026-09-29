@@ -1,5 +1,17 @@
 # supabase-grants-lint
 
+## 0.1.2
+
+### Patch Changes
+
+- 90e7cca: Find the project from inside `supabase/`. Without `--dir`, `check`, `doctor` and `explain` run from `supabase/` or `supabase/migrations` now use the folder that contains `supabase/` (its config included) and name it in the summary line, and a folder of `.sql` files is linted as `--dir <that folder>` would. The "Migrations directory not found" error now says to run from the project root or pass `--dir <project or migrations folder>`.
+
+## 0.1.1
+
+### Patch Changes
+
+- b32fa16: The GitHub Action's description is now short enough for the GitHub Marketplace (under 125 characters), and the actions it uses (`actions/setup-node`, `github/codeql-action/upload-sarif`) are pinned to full commit SHAs. Releases are now staged on npm by CI through trusted publishing, with provenance, and go live only after a maintainer approves them with 2FA.
+
 ## 0.1.0
 
 ### Minor Changes

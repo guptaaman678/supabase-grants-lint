@@ -19,7 +19,7 @@ jobs:
   analyze:
     # Scorecard's GraphQL checks need repo access the GITHUB_TOKEN does not
     # have on a private repository (githubv4.Query: Resource not accessible
-    # by integration); it can only run once the repo is public (T9.4).
+    # by integration); the guard skips the job on private copies.
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     permissions:
@@ -31,13 +31,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # publish_results stays false until the repo is public (T9.4); a private
-      # repo's results cannot be published to the public Scorecard API.
+      # publish_results sends the results to the public Scorecard API, which
+      # the README badge reads. Publishing verifies this workflow: no top-level
+      # write permissions, env or defaults; no job env, containers or services;
+      # an Ubuntu runner; only checkout, scorecard-action, upload-artifact,
+      # upload-sarif and harden-runner steps; id-token: write on this job only.
       - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         with:
           results_file: results.sarif
           results_format: sarif
-          publish_results: false
+          publish_results: true
       - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           sarif_file: results.sarif

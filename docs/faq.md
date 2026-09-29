@@ -12,6 +12,13 @@ made with `supabase db pull` can turn them back on when the migrations are repla
 ([GL007](rules/GL007.md)). A project that never had automatic grants can set
 `"since": "none"` and `"platformDefaults": "explicit"`, so every migration is enforced.
 
+## Where do I run it?
+
+Run it from your project root, the folder that contains `supabase/`, or pass `--dir`. `--dir`
+takes either the project root or the migrations folder itself. Run from inside `supabase/` or
+`supabase/migrations`, it finds the project root above and says so in its summary line; run from
+any other folder of `.sql` files, it lints that folder, exactly as `--dir <that folder>` does.
+
 ## Does it touch my database?
 
 No. `check`, `doctor` and `explain` read your migration files and your config, and nothing else.
@@ -54,7 +61,8 @@ statement-by-statement linter cannot do. Use both.
 ## I use declarative schemas, Drizzle or Prisma
 
 Declarative schema files (`supabase/schemas`, or `schema_paths` in `supabase/config.toml`) are
-found and checked with no setup; see [Declarative schemas](how-it-works.md#declarative-schemas).
+found with no setup and checked once the project is opted in; see
+[Declarative schemas](how-it-works.md#declarative-schemas).
 For Drizzle Kit, run `supabase-grants-lint check --dir drizzle`. For Prisma, set
 `"migrations": "prisma/migrations/*/migration.sql"` in `grants-lint.config.json`. See
 [Other migration tools](how-it-works.md#other-migration-tools).

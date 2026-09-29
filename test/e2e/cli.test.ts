@@ -31,13 +31,13 @@ beforeAll(() => {
   });
 }, 60_000);
 
-function cli(args: string[], env: Record<string, string> = {}) {
+function cli(args: string[], env: Record<string, string> = {}, cwd = ROOT) {
   const inherited = { ...process.env };
   delete inherited.NO_COLOR;
   // doctor reads a live database when this is set (T11.1); these tests stay offline (G4).
   delete inherited.SUPABASE_DB_URL;
   const result = spawnSync(process.execPath, [BIN, ...args], {
-    cwd: ROOT,
+    cwd,
     encoding: 'utf8',
     env: { ...inherited, ...env },
   });
@@ -207,6 +207,76 @@ describe('init then check (T4.8)', () => {
     expect(readFileSync(path.join(dir, 'grants-lint.config.json'), 'utf8')).toContain(
       '"since": "none"',
     );
+  });
+});
+
+describe('running without --dir (T9.8)', () => {
+  const nested = path.join(ROOT, PROJECTS, 'nested');
+  const sqlFolder = path.join(ROOT, PROJECTS, 'sql-folder');
+  const summary = (stdout: string) => stdout.trim().split('\n').at(-1);
+  const findings = (stdout: string) =>
+    (JSON.parse(stdout) as { findings: { ruleId: string; file: string; line: number }[] }).findings;
+
+  it('from the project root: supabase/migrations, config read, no location in the summary', () => {
+    const { code, stdout, stderr } = cli(['check'], {}, nested);
+    expect(stderr).toBe('');
+    expect(stdout).toMatch(/warn +GL001 +public\.todos/);
+    expect(summary(stdout)).toMatch(/^0 errors, 1 warning {2}\(2 files, 1 relation, [0-9.]+s\)$/);
+    expect(code).toBe(0);
+  });
+
+  it.each([
+    ['supabase', '..'],
+    ['supabase/migrations', '../..'],
+  ])('from %s: finds the project root above, reads its config, skips seed.sql', (sub, up) => {
+    const cwd = path.join(nested, sub);
+    const { code, stdout, stderr } = cli(['check'], {}, cwd);
+    expect(stderr).toBe('');
+    expect(stdout).toMatch(/warn +GL001 +public\.todos/);
+    expect(stdout).not.toContain('seed.sql');
+    expect(summary(stdout)).toMatch(/^0 errors, 1 warning {2}\(2 files, 1 relation, [0-9.]+s, /);
+    expect(summary(stdout)?.endsWith(`s, project root ${up})`)).toBe(true);
+    expect(code).toBe(0);
+    const doctor = cli(['doctor'], {}, cwd);
+    expect(doctor.stdout).toContain(`Replayed 2 migration files (project root ${up}):`);
+    expect(doctor.code).toBe(0);
+    const json = cli(['check', '--format', 'json'], {}, cwd);
+    expect(findings(json.stdout)).toEqual(
+      findings(cli(['check', '--format', 'json', '--dir', '.'], {}, nested).stdout).map((f) => ({
+        ...f,
+        file: path.posix.relative(sub, f.file),
+      })),
+    );
+  });
+
+  it('from a folder of .sql files with no supabase/: the same as --dir <that folder>', () => {
+    const plain = cli(['check', '--format', 'json'], {}, sqlFolder);
+    const withDir = cli(['check', '--format', 'json', '--dir', '.'], {}, sqlFolder);
+    const fromRoot = cli(['check', '--format', 'json', '--dir', `${PROJECTS}/sql-folder`]);
+    expect(plain.code).toBe(1);
+    expect(withDir.code).toBe(1);
+    expect(fromRoot.code).toBe(1);
+    expect(findings(plain.stdout)).toEqual(findings(withDir.stdout));
+    expect(findings(plain.stdout)).toEqual(
+      findings(fromRoot.stdout).map((f) => ({ ...f, file: path.posix.basename(f.file) })),
+    );
+    expect(findings(plain.stdout).map((f) => f.ruleId)).toEqual(['GL001']);
+    expect(summary(cli(['check'], {}, sqlFolder).stdout)).toMatch(/, migrations folder \.\)$/);
+  });
+
+  it('elsewhere: exit 2 naming both options', () => {
+    const empty = mkdtempSync(path.join(os.tmpdir(), 'grants-lint-e2e-empty-'));
+    try {
+      const { code, stdout, stderr } = cli(['check'], {}, empty);
+      expect(stdout).toBe('');
+      expect(stderr).toContain(
+        'Migrations directory not found: supabase/migrations. Run from the project root ' +
+          '(the folder that contains supabase/), or pass --dir <project or migrations folder>.',
+      );
+      expect(code).toBe(2);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 });
 

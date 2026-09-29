@@ -82,7 +82,8 @@ the way the Supabase CLI finds them: `schema_paths` under `[db.migrations]` in
 globs and `.sql` files (relative to the project directory) replaces that search, and `[]` skips
 declarative schemas. Either way the files are read in the CLI's order: entries in the order
 listed, each entry's matches sorted by name, directories expanded to every `.sql` file below them,
-and a file an earlier entry matched skipped.
+and a file an earlier entry matched skipped. They are checked only once the project is opted in
+(see [Declarative schemas](how-it-works.md#declarative-schemas)).
 
 ### since
 

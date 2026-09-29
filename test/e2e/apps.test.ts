@@ -106,6 +106,8 @@ it('has the projects the suite promises', () => {
   expect(apps).toEqual([
     'chat-app',
     'declarative-app',
+    'declarative-exposure-off',
+    'declarative-not-opted-in',
     'declarative-only',
     'drizzle-app',
     'multi-schema-app',
@@ -145,7 +147,7 @@ describe.each(apps)('%s', (app) => {
       expect(pretty.stdout).toContain(
         `${String(errors)} error${errors === 1 ? '' : 's'}, ` +
           `${String(warnings)} warning${warnings === 1 ? '' : 's'}  ` +
-          `(${String(files)} files, ${String(relations)} relation${relations === 1 ? '' : 's'}, `,
+          `(${String(files)} file${files === 1 ? '' : 's'}, ${String(relations)} relation${relations === 1 ? '' : 's'}, `,
       );
     },
   );

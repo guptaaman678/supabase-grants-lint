@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { UsageError } from '../../src/errors.js';
-import { lint } from '../../src/lint.js';
+import { isDeclarativeEnforced, lint } from '../../src/lint.js';
 import { compareUtf8, discoverSchemaFiles } from '../../src/load/declarative.js';
 import { discoverMigrations, migrationVersion } from '../../src/load/discover.js';
 import { autoExposeSetting, readSupabaseToml } from '../../src/load/supabase-config.js';
@@ -246,21 +246,80 @@ describe('lint with declarative schemas', () => {
     };
   }
 
-  it('checks every declarative relation from no default grants, even when not opted in', async () => {
+  it('does not check declarative files until the project is opted in, and says so once', async () => {
     write('supabase/migrations/20260901000000_init.sql', 'create table public.old (id int);\n');
     write('supabase/schemas/todos.sql', TABLE + POLICY);
-    const { findings, since, summary } = await run();
+    write('supabase/schemas/views.sql', 'create view public.v as select 1;\n');
+    const { findings, notices, since, summary } = await run();
     expect(since).toBeNull();
+    expect(findings).toEqual(['GL000 supabase/migrations/20260901000000_init.sql:1 ']);
+    expect(notices).toEqual(['declarative-not-checked']);
+    expect(summary.files).toBe(1);
+    expect(summary.relations).toBe(1);
+    expect(summary.notices).toBe(1);
+    const notice = (await lint({ cwd: root })).notices[0];
+    expect(notice).toEqual({
+      code: 'declarative-not-checked',
+      message: expect.stringMatching(
+        /^2 declarative schema files were not checked: .*They are/,
+      ) as unknown,
+      file: 'supabase/schemas/todos.sql',
+      line: 1,
+      column: 1,
+    });
+  });
+
+  it('checks every declarative relation from no default grants once since resolves', async () => {
+    write('supabase/migrations/20260901000000_init.sql', 'create table public.old (id int);\n');
+    write('supabase/schemas/todos.sql', TABLE + POLICY);
+    write('grants-lint.config.json', JSON.stringify({ since: '20260901000000' }));
+    const { findings, notices, since, summary } = await run();
+    expect(since).toBe('20260901000000');
     expect(findings).toEqual([
-      'GL000 supabase/migrations/20260901000000_init.sql:1 ',
       'GL001 supabase/schemas/todos.sql:1 service_role',
       'GL002 supabase/schemas/todos.sql:1 authenticated',
     ]);
+    expect(notices).toEqual([]);
     expect(summary.files).toBe(2);
     expect(summary.relations).toBe(2);
   });
 
+  it('auto_expose_new_tables = false in supabase/config.toml opts the schema files in', async () => {
+    write('supabase/schemas/todos.sql', TABLE + POLICY);
+    write('supabase/config.toml', '[api]\nauto_expose_new_tables = false\n');
+    expect((await run()).findings).toEqual([
+      'GL001 supabase/schemas/todos.sql:1 service_role',
+      'GL002 supabase/schemas/todos.sql:1 authenticated',
+    ]);
+    write('supabase/config.toml', '[api]\nauto_expose_new_tables = true\n');
+    expect(await run()).toMatchObject({ findings: [], notices: ['declarative-not-checked'] });
+  });
+
+  it('isDeclarativeEnforced: a resolved since, or auto_expose_new_tables = false', () => {
+    const since = (value: string | null) => ({ value, source: null, detected: null });
+    expect(isDeclarativeEnforced(since(null), root)).toBe(false);
+    expect(isDeclarativeEnforced(since('none'), root)).toBe(true);
+    expect(isDeclarativeEnforced(since('20261001'), root)).toBe(true);
+    write('supabase/config.toml', '[api]\n');
+    expect(isDeclarativeEnforced(since(null), root)).toBe(false);
+    write('supabase/config.toml', '[api]\nauto_expose_new_tables = false\n');
+    expect(isDeclarativeEnforced(since(null), root)).toBe(true);
+  });
+
+  it('unchecked schema files keep their suppressions and ignore entries quiet', async () => {
+    write(
+      'supabase/schemas/todos.sql',
+      '-- grants-lint-disable-next-line GL001: server code never reads todos\n' + TABLE,
+    );
+    write(
+      'grants-lint.config.json',
+      JSON.stringify({ ignore: [{ rule: 'GL002', relation: 'todos', reason: 'checked by hand' }] }),
+    );
+    expect((await run()).notices).toEqual(['declarative-not-checked']);
+  });
+
   it('a default-privilege re-grant in a schema file is GL006, not GL007', async () => {
+    write('supabase/migrations/20261001000000_opt_in.sql', OPT_IN);
     write(
       'supabase/schemas/a.sql',
       'alter default privileges in schema public grant all on tables to anon;\n' + TABLE,
@@ -270,6 +329,7 @@ describe('lint with declarative schemas', () => {
   });
 
   it('a grant in another schema file counts; GL003 is dropped when GL002 fires across files', async () => {
+    write('supabase/migrations/20261001000000_opt_in.sql', OPT_IN);
     write('supabase/schemas/a_tables.sql', TABLE);
     write('supabase/schemas/b_policies.sql', POLICY);
     expect((await run()).findings).toEqual([
@@ -284,6 +344,7 @@ describe('lint with declarative schemas', () => {
   });
 
   it('inline suppressions and ignore entries apply to schema files', async () => {
+    write('supabase/migrations/20261001000000_opt_in.sql', OPT_IN);
     write(
       'supabase/schemas/todos.sql',
       '-- grants-lint-disable-next-line GL001: server code never reads todos\n' +

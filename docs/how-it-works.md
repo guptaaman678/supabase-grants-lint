@@ -66,8 +66,12 @@ differently:
 - **No automatic grants.** The replay starts with no default privileges, since the state has to
   carry its own grants once automatic grants are gone. A default-privilege statement in the files
   still applies to the tables after it.
-- **Every relation is checked** with GL001 to GL006 and GL008, whatever `since` says; there is no
-  history to exempt. GL000 and GL007 are about migration history and do not apply.
+- **Every relation is checked** with GL001 to GL006 and GL008, whatever version `since` names;
+  there is no history to exempt. GL000 and GL007 are about migration history and do not apply.
+- **Only once the project is opted in**: an opt-in migration was found, `since` is set (config or
+  `--since`), or `supabase/config.toml` sets `auto_expose_new_tables = false` under `[api]`. Until
+  then the platform still grants new tables automatically, so the files are not checked and one
+  `declarative-not-checked` notice says so.
 
 Findings point at the schema file and line, and come after the migrations' findings. Inline
 suppressions and `ignore` entries work the same way. `doctor`, `explain` and `diff` read the

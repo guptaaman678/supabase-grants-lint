@@ -1,0 +1,7 @@
+project_id = "declarative-exposure-off"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+# The local stack gives new tables no Data API grants, as production does after 2026-10-30.
+auto_expose_new_tables = false

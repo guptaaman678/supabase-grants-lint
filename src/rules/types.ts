@@ -82,7 +82,12 @@ export interface Finding {
 
 /** Something the user should know that is not a finding (JSON `notices[]`, §6.3). */
 export interface Notice {
-  readonly code: 'unused-suppression' | 'unused-ignore' | 'platform-revoke' | 'invalid-privilege';
+  readonly code:
+    | 'unused-suppression'
+    | 'unused-ignore'
+    | 'platform-revoke'
+    | 'invalid-privilege'
+    | 'declarative-not-checked';
   readonly message: string;
   readonly file?: string;
   readonly line?: number;

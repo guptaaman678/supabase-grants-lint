@@ -1,0 +1,23 @@
+{
+  "description": "Only declarative schemas and no opt-in migration, but supabase/config.toml sets auto_expose_new_tables = false, which opts the project in (ADR-017): the schema file is checked, and profiles' anon policy has no grant behind it.",
+  "runs": [
+    {
+      "args": [],
+      "exitCode": 1,
+      "since": { "value": null },
+      "summary": { "files": 1, "relations": 1, "errors": 1, "warnings": 0, "notices": 0 },
+      "findings": [
+        {
+          "rule": "GL002",
+          "severity": "error",
+          "file": "supabase/schemas/profiles.sql",
+          "line": 2,
+          "column": 1,
+          "relation": "public.profiles",
+          "role": "anon"
+        }
+      ],
+      "notices": []
+    }
+  ]
+}
