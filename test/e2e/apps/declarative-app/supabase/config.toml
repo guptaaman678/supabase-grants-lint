@@ -1,0 +1,13 @@
+project_id = "declarative-app"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+
+[db.migrations]
+enabled = true
+# Tables first, then every other schema file in name order.
+schema_paths = [
+  "./schemas/tables.sql",
+  "./schemas/*.sql", # includes tables.sql again, which is skipped
+]

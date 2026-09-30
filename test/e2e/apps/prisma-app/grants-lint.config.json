@@ -1,0 +1,3 @@
+{
+  "migrations": "prisma/migrations/*/migration.sql"
+}

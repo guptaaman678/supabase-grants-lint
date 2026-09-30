@@ -43,6 +43,14 @@
         { "type": "array", "items": { "$ref": "#/definitions/nonEmptyString" }, "minItems": 1 }
       ]
     },
+    "schemaPaths": {
+      "description": "Declarative schema files (supabase/schemas). \"auto\" finds them as the Supabase CLI does: [db.migrations] schema_paths in supabase/config.toml, else the pg-delta declarative directory, else supabase/schemas. A list of paths and globs (relative to the project directory) replaces that; [] skips declarative schemas.",
+      "default": "auto",
+      "oneOf": [
+        { "type": "string", "enum": ["auto"] },
+        { "type": "array", "items": { "$ref": "#/definitions/nonEmptyString" } }
+      ]
+    },
     "schemas": {
       "description": "Schemas whose tables, views and sequences are checked.",
       "type": "array",

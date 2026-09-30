@@ -36,6 +36,8 @@ export interface IgnoreEntry {
 
 export interface Config {
   readonly migrations: string | readonly string[];
+  /** Declarative schema files (ADR-017): `"auto"` follows the Supabase CLI; `[]` turns them off. */
+  readonly schemaPaths: 'auto' | readonly string[];
   readonly schemas: readonly string[];
   readonly since: Since;
   readonly platformDefaults: PlatformDefaults;
@@ -58,6 +60,7 @@ export const PACKAGE_JSON_KEY = 'grantsLint';
 export const DEFAULT_CONFIG: Config = {
   migrations: DEFAULT_MIGRATIONS,
   schemas: ['public'],
+  schemaPaths: 'auto',
   since: 'auto',
   platformDefaults: 'legacy',
   platformRevokeAtSince: true,

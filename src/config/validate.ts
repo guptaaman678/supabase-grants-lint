@@ -226,6 +226,14 @@ function validateKey(c: Collector, key: ConfigKey, value: unknown): unknown {
       if (typeof value === 'string') return c.nonEmptyString(key, value);
       if (Array.isArray(value)) return c.stringList(key, value, 1);
       return c.fail(key, `must be a path, a glob, or an array of them, got ${describe(value)}`);
+    case 'schemaPaths':
+      if (value === 'auto') return value;
+      if (Array.isArray(value)) return c.stringList(key, value, 0);
+      return c.fail(
+        key,
+        `must be "auto" or an array of paths and globs ([] to skip declarative schemas), ` +
+          `got ${describe(value)}`,
+      );
     case 'schemas':
       return c.stringList(key, value, 1);
     case 'clientRoles':

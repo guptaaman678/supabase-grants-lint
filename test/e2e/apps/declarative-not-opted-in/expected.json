@@ -1,0 +1,50 @@
+{
+  "description": "Migrations with no opt-in next to declarative schemas (ADR-017): without since, GL000 warns and the schema files are not checked, one notice says so; once since resolves (here --since), audit_log in the schema files has no grants at all.",
+  "runs": [
+    {
+      "args": [],
+      "exitCode": 0,
+      "since": { "value": null, "source": null },
+      "summary": { "files": 1, "relations": 1, "errors": 0, "warnings": 1, "notices": 1 },
+      "findings": [
+        {
+          "rule": "GL000",
+          "severity": "warn",
+          "file": "supabase/migrations/20261001000000_add_notes.sql",
+          "line": 1,
+          "column": 1
+        }
+      ],
+      "notices": [
+        { "code": "declarative-not-checked", "file": "supabase/schemas/audit_log.sql", "line": 1 }
+      ]
+    },
+    {
+      "args": ["--since", "20261001000000"],
+      "exitCode": 1,
+      "since": { "value": "20261001000000", "source": "cli" },
+      "summary": { "files": 2, "relations": 2, "errors": 2, "warnings": 0, "notices": 0 },
+      "findings": [
+        {
+          "rule": "GL001",
+          "severity": "error",
+          "file": "supabase/schemas/audit_log.sql",
+          "line": 2,
+          "column": 1,
+          "relation": "public.audit_log",
+          "role": "service_role"
+        },
+        {
+          "rule": "GL002",
+          "severity": "error",
+          "file": "supabase/schemas/audit_log.sql",
+          "line": 2,
+          "column": 1,
+          "relation": "public.audit_log",
+          "role": "authenticated"
+        }
+      ],
+      "notices": []
+    }
+  ]
+}

@@ -127,7 +127,28 @@ export interface RunRulesOptions {
   readonly rules?: readonly Rule[];
   /** Live mode: the database to compare the migrations with (GL009). */
   readonly live?: LiveSnapshot;
+  /**
+   * The declarative schema files replayed as one unit (ADR-017). `DECLARATIVE_RULES` also run
+   * over it; its findings are reported after the migrations' findings.
+   */
+  readonly declarative?: WindowedReplay;
 }
+
+/**
+ * The rules that check declarative schema files: those about relations, policies and grants in a
+ * file. GL000, GL007 (enforcement window and replay history) and GL009 (live) are about migrations.
+ */
+export const DECLARATIVE_RULES: readonly RuleId[] = [
+  'GL001',
+  'GL002',
+  'GL003',
+  'GL004',
+  'GL005',
+  'GL006',
+  'GL008',
+  'PARSE001',
+  'PARSE002',
+];
 
 /** A finding before suppression, keeping the resolved relation for matching. */
 interface Candidate {
@@ -150,6 +171,7 @@ export function runRules(options: RunRulesOptions): RuleRunResult {
     strictParse = false,
     rules = RULES,
     live,
+    declarative,
   } = options;
   if (suppressionProblems.length > 0) throw suppressionError(suppressionProblems);
   const reasonless = config.ignore.flatMap((entry, i) =>
@@ -164,35 +186,32 @@ export function runRules(options: RunRulesOptions): RuleRunResult {
   );
   if (reasonless.length > 0) throw new ConfigError('options.config', reasonless);
 
-  const ctx = createContext(config, replay, discovery, live);
+  const units: { ctx: RuleContext; rules: readonly Rule[] }[] = [
+    { ctx: createContext(config, replay, discovery, live), rules },
+  ];
+  if (declarative !== undefined) {
+    units.push({
+      ctx: createContext(config, declarative),
+      rules: rules.filter((rule) => DECLARATIVE_RULES.includes(rule.id)),
+    });
+  }
   const ran = new Set<RuleId>();
   let candidates: Candidate[] = [];
-  for (const rule of rules) {
-    const setting = strictParse && rule.id === 'PARSE001' ? 'error' : config.rules[rule.id];
-    if (setting === 'off') continue;
-    ran.add(rule.id);
-    for (const found of rule.check(ctx)) {
-      const severity: Severity = setting ?? found.severity ?? rule.defaultSeverity;
-      candidates.push({
-        relation: found.relation,
-        finding: {
-          ruleId: rule.id,
-          severity,
-          message: found.message,
-          file: found.at.file,
-          line: found.at.line,
-          column: found.at.column,
-          ...(found.relation === undefined ? {} : { relation: qualified(found.relation) }),
-          ...(found.role === undefined ? {} : { role: granteeLabel(found.role) }),
-          ...(found.privilege === undefined ? {} : { privilege: found.privilege }),
-          ...(found.fix === undefined ? {} : { fix: found.fix }),
-          docsUrl: docsUrl(rule.id),
-        },
-      });
+  for (const { ctx, rules: unitRules } of units) {
+    for (const rule of unitRules) {
+      const setting = strictParse && rule.id === 'PARSE001' ? 'error' : config.rules[rule.id];
+      if (setting === 'off') continue;
+      ran.add(rule.id);
+      candidates.push(...check(rule, setting, ctx));
     }
   }
-
-  candidates = preferGL002(candidates);
+  // The replay unit each file belongs to: a migration is its own; declarative files share one.
+  const unitOf = new Map(
+    [...replay.files, ...(declarative?.files ?? [])].flatMap((file) =>
+      file.sources.map((source) => [source, file.file] as const),
+    ),
+  );
+  candidates = preferGL002(candidates, (file) => unitOf.get(file) ?? file);
 
   const ignoreUsed = config.ignore.map(() => false);
   const inlineUsed = new Map<Suppression, Set<RuleId>>(suppressions.map((s) => [s, new Set()]));
@@ -223,7 +242,12 @@ export function runRules(options: RunRulesOptions): RuleRunResult {
     if (!suppressed) findings.push(finding);
   }
 
-  const order = new Map(replay.files.map((file) => [file.file, file.index]));
+  // Migrations in replay order, then declarative files in the order the CLI applies them.
+  const order = new Map(
+    [...replay.files, ...(declarative?.files ?? [])]
+      .flatMap((file) => file.sources)
+      .map((file, i) => [file, i]),
+  );
   const notices: Notice[] = [];
   config.ignore.forEach((entry, i) => {
     if (ignoreUsed[i] === true || !ran.has(entry.rule)) return;
@@ -251,6 +275,26 @@ export function runRules(options: RunRulesOptions): RuleRunResult {
 
   findings.sort(compareFindings(order));
   return { findings, notices };
+}
+
+/** One rule's findings over one replay, with the configured severity applied. */
+function check(rule: Rule, setting: Severity | undefined, ctx: RuleContext): Candidate[] {
+  return rule.check(ctx).map((found) => ({
+    relation: found.relation,
+    finding: {
+      ruleId: rule.id,
+      severity: setting ?? found.severity ?? rule.defaultSeverity,
+      message: found.message,
+      file: found.at.file,
+      line: found.at.line,
+      column: found.at.column,
+      ...(found.relation === undefined ? {} : { relation: qualified(found.relation) }),
+      ...(found.role === undefined ? {} : { role: granteeLabel(found.role) }),
+      ...(found.privilege === undefined ? {} : { privilege: found.privilege }),
+      ...(found.fix === undefined ? {} : { fix: found.fix }),
+      docsUrl: docsUrl(rule.id),
+    },
+  }));
 }
 
 /**
@@ -295,9 +339,12 @@ function platformRevokeMessage(event: PlatformRevokeEvent, since: string): strin
   );
 }
 
-/** When GL002 fires for (relation, role) in a file, GL003 findings for the same are dropped. */
-function preferGL002(candidates: Candidate[]): Candidate[] {
-  const key = (f: Finding): string => JSON.stringify([f.file, f.relation, f.role]);
+/**
+ * When GL002 fires for (relation, role) in a file (a replay unit, `unit`), GL003 findings for the
+ * same are dropped.
+ */
+function preferGL002(candidates: Candidate[], unit: (file: string) => string): Candidate[] {
+  const key = (f: Finding): string => JSON.stringify([unit(f.file), f.relation, f.role]);
   const unreachable = new Set(
     candidates.filter((c) => c.finding.ruleId === 'GL002').map((c) => key(c.finding)),
   );

@@ -1,0 +1,23 @@
+{
+  "description": "Only declarative schemas, no supabase/migrations yet, and not opted in (ADR-017): the schema files are not checked, one notice says so. With --since the project counts as opted in: supabase/schemas and its subdirectory are checked on their own, and every relation carries its grants.",
+  "runs": [
+    {
+      "args": [],
+      "exitCode": 0,
+      "since": { "value": null },
+      "summary": { "files": 0, "relations": 0, "errors": 0, "warnings": 0, "notices": 1 },
+      "findings": [],
+      "notices": [
+        { "code": "declarative-not-checked", "file": "supabase/schemas/messages.sql", "line": 1 }
+      ]
+    },
+    {
+      "args": ["--since", "none"],
+      "exitCode": 0,
+      "since": { "value": "none", "source": "cli" },
+      "summary": { "files": 2, "relations": 2, "errors": 0, "warnings": 0, "notices": 0 },
+      "findings": [],
+      "notices": []
+    }
+  ]
+}

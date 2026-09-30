@@ -1,0 +1,23 @@
+{
+  "description": "Drizzle Kit output (drizzle/0000_name.sql, statement-breakpoint comments, quoted unqualified names) checked with --dir drizzle: the custom opt-in migration is detected and the table after it has no grants.",
+  "runs": [
+    {
+      "args": ["--dir", "drizzle"],
+      "exitCode": 1,
+      "since": { "value": "0001", "source": "auto" },
+      "summary": { "files": 3, "relations": 2, "errors": 1, "warnings": 0, "notices": 0 },
+      "findings": [
+        {
+          "rule": "GL001",
+          "severity": "error",
+          "file": "drizzle/0002_add_tags.sql",
+          "line": 1,
+          "column": 1,
+          "relation": "public.tags",
+          "role": "service_role"
+        }
+      ],
+      "notices": []
+    }
+  ]
+}

@@ -24,7 +24,7 @@ function needed(policy: Policy): readonly string[] {
 /** The policy statement in this file: its CREATE, or the ALTER when it was created earlier. */
 function anchor(policy: Policy, file: FileReplay): SourceLocation {
   // `file.policies` holds policies created or altered in the file, so one of the two is in it.
-  return policy.altered !== null && policy.created.file !== file.file
+  return policy.altered !== null && !file.sources.includes(policy.created.file)
     ? policy.altered
     : policy.created;
 }
