@@ -26,8 +26,22 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      # Pushes and pull requests made with the built-in GITHUB_TOKEN start no workflows, so
+      # the version PR would never get CI and could only be merged with --admin. A token from
+      # the release GitHub App (installed on this repository only, contents and pull requests)
+      # is used for the checkout's pushes and for changesets/action instead.
+      - name: Create a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          token: ${{ steps.app-token.outputs.token }}
           persist-credentials: true
 
       # Node 24 ships npm 11.x; `npm stage` needs npm 11.15.0 or later. No
@@ -50,7 +64,7 @@ jobs:
           commit-message: 'chore: version packages'
           push-with-git-cli: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       # changesets/action v2 names this output `has-changesets` (v1 used `hasChangesets`);
       # reading the old name yields an empty string, so the release steps never ran.
