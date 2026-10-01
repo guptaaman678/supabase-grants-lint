@@ -63,8 +63,8 @@ jobs:
           pr-title: 'chore: version packages'
           commit-message: 'chore: version packages'
           push-with-git-cli: true
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          # v2 takes the token as an input and refuses a GITHUB_TOKEN env that differs from it.
+          github-token: ${{ steps.app-token.outputs.token }}
 
       # changesets/action v2 names this output `has-changesets` (v1 used `hasChangesets`);
       # reading the old name yields an empty string, so the release steps never ran.
