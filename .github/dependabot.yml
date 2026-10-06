@@ -9,13 +9,15 @@ updates:
         patterns:
           - '*'
     ignore:
+      # Version ranges, not `update-types`: grouped PRs (#23, #25) still carried the majors
+      # with `update-types: ['version-update:semver-major']`.
       # @types/node tracks the oldest supported Node (engines: >=22), not the newest.
       - dependency-name: '@types/node'
-        update-types: ['version-update:semver-major']
+        versions: ['>=23']
       # typescript-eslint does not support TypeScript 7 yet (npm ERESOLVE on its peer range).
       # Remove this once it does.
       - dependency-name: 'typescript'
-        update-types: ['version-update:semver-major']
+        versions: ['>=7']
   - package-ecosystem: github-actions
     directory: /
     schedule:
