@@ -1,6 +1,7 @@
 import { ConfigError, type ConfigIssue } from '../errors.js';
 import { extractVersion } from '../load/discover.js';
 import {
+  AUTO_RLS_MODES,
   type Config,
   type ConfigKey,
   DEFAULT_CONFIG,
@@ -249,6 +250,8 @@ function validateKey(c: Collector, key: ConfigKey, value: unknown): unknown {
     case 'platformRevokeAtSince':
       if (typeof value === 'boolean') return value;
       return c.fail(key, `must be true or false, got ${describe(value)}`);
+    case 'autoRls':
+      return c.oneOf(key, value, AUTO_RLS_MODES);
     case 'postgresMajor':
       if (typeof value === 'number' && Number.isInteger(value) && value >= MIN_POSTGRES_MAJOR) {
         return value;

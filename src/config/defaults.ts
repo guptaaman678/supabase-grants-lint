@@ -24,6 +24,13 @@ export type RuleSetting = (typeof RULE_SETTINGS)[number];
 export const PLATFORM_DEFAULTS = ['legacy', 'explicit'] as const;
 export type PlatformDefaults = (typeof PLATFORM_DEFAULTS)[number];
 
+/**
+ * Whether new tables in `public` start with row level security on, as Supabase's `ensure_rls`
+ * event trigger makes them (engine only; grants-lint's rules do not read RLS state).
+ */
+export const AUTO_RLS_MODES = ['auto', 'on', 'off'] as const;
+export type AutoRlsMode = (typeof AUTO_RLS_MODES)[number];
+
 /** `"auto"`, `"none"`, or a migration version (the leading digits of a file name). */
 export type Since = string;
 
@@ -43,6 +50,8 @@ export interface Config {
   readonly platformDefaults: PlatformDefaults;
   /** Apply the announced platform revoke before the first enforced file (ADR-002 item 1). */
   readonly platformRevokeAtSince: boolean;
+  /** Automatic RLS from the `ensure_rls` trigger (engine only). */
+  readonly autoRls: AutoRlsMode;
   readonly migrationRole: string;
   readonly clientRoles: readonly string[];
   readonly serviceRole: string;
@@ -64,6 +73,7 @@ export const DEFAULT_CONFIG: Config = {
   since: 'auto',
   platformDefaults: 'legacy',
   platformRevokeAtSince: true,
+  autoRls: 'auto',
   migrationRole: 'postgres',
   clientRoles: ['anon', 'authenticated'],
   serviceRole: 'service_role',

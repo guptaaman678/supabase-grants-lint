@@ -386,6 +386,21 @@ describe('GL002 takes precedence over GL003', () => {
     expect(findings.map((f) => f.ruleId)).not.toContain('GL002');
   });
 
+  it('keys a file outside the replay by its own path', () => {
+    const outside = { file: 'z/unknown.sql', line: 1, column: 1 };
+    const unreachable = rule('GL002', () => [
+      { at: outside, message: 'unreachable', relation: T('todos'), role: 'anon' },
+    ]);
+    const dead = rule('GL003', () => [
+      { at: outside, message: 'dead outside', relation: T('todos'), role: 'anon' },
+      { at, message: 'dead in a replayed file', relation: T('todos'), role: 'anon' },
+    ]);
+    expect(run(SQL, [unreachable, dead]).findings.map((f) => f.message)).toEqual([
+      'dead in a replayed file',
+      'unreachable',
+    ]);
+  });
+
   it('matches PUBLIC with PUBLIC only', () => {
     const pub = rule('GL002', () => [
       { at, message: 'unreachable', relation: T('todos'), role: PUBLIC },

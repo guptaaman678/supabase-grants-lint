@@ -8,6 +8,7 @@ import {
   CONFIG_FILE_NAME,
   DEFAULT_CONFIG,
   PLATFORM_DEFAULTS,
+  AUTO_RLS_MODES,
   RULE_IDS,
   RULE_SETTINGS,
 } from '../../src/config/defaults.js';
@@ -58,6 +59,7 @@ const FULL: Config = {
   since: '20261001090000',
   platformDefaults: 'explicit',
   platformRevokeAtSince: false,
+  autoRls: 'off',
   migrationRole: 'supabase_admin',
   clientRoles: ['anon', 'authenticated', 'app_user'],
   serviceRole: 'service_role',
@@ -251,6 +253,9 @@ describe('validateConfig: valid values for each key', () => {
     ['platformDefaults', 'explicit'],
     ['platformRevokeAtSince', true],
     ['platformRevokeAtSince', false],
+    ['autoRls', 'auto'],
+    ['autoRls', 'on'],
+    ['autoRls', 'off'],
     ['migrationRole', 'postgres'],
     ['clientRoles', []],
     ['clientRoles', ['anon', 'authenticated', 'app_user']],
@@ -316,6 +321,7 @@ describe('validateConfig: errors name the file and the key', () => {
       'platformRevokeAtSince',
       /must be true or false, got the string "true"/,
     ],
+    ['autoRls', true, 'autoRls', /must be one of "auto", "on", "off", got boolean true/],
     ['migrationRole', '', 'migrationRole', /non-empty string/],
     ['migrationRole', ['postgres'], 'migrationRole', /got an array/],
     ['clientRoles', 'anon', 'clientRoles', /array of strings/],
@@ -535,6 +541,7 @@ describe('schema/config.schema.json', () => {
     expect(schema.definitions.ruleId.enum).toEqual([...RULE_IDS]);
     expect(schema.definitions.ruleSetting.enum).toEqual([...RULE_SETTINGS]);
     expect(schema.properties.platformDefaults?.enum).toEqual([...PLATFORM_DEFAULTS]);
+    expect(schema.properties.autoRls?.enum).toEqual([...AUTO_RLS_MODES]);
   });
 
   it('contains no em dash', () => {

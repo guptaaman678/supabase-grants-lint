@@ -206,6 +206,61 @@ export interface SetRole extends Base {
   readonly local: boolean;
 }
 
+export const ROW_SECURITY_ACTIONS = ['enable', 'disable', 'force', 'no-force'] as const;
+export type RowSecurityAction = (typeof ROW_SECURITY_ACTIONS)[number];
+
+/**
+ * `ALTER TABLE ... ENABLE | DISABLE | FORCE | NO FORCE ROW LEVEL SECURITY`. Other subcommands of
+ * the same statement are not modelled; an `ALTER TABLE` without any of these four stays `Unknown`.
+ */
+export interface AlterTableRowSecurity extends Base {
+  readonly kind: 'AlterTableRowSecurity';
+  readonly relation: QualifiedName;
+  readonly ifExists: boolean;
+  /** `ALTER TABLE ONLY`; row security subcommands never recurse to partitions either way. */
+  readonly only: boolean;
+  /** In statement order. */
+  readonly actions: readonly RowSecurityAction[];
+}
+
+/**
+ * When an event trigger fires: `O` (`ENABLE`, the default), `R` (`ENABLE REPLICA`), `A`
+ * (`ENABLE ALWAYS`) or `D` (`DISABLE`), as in `pg_event_trigger.evtenabled`.
+ */
+export type EventTriggerState = 'O' | 'R' | 'A' | 'D';
+
+/** `CREATE | ALTER ... ENABLE/DISABLE | ALTER ... RENAME TO | DROP EVENT TRIGGER`. */
+export type EventTrigger = Base & { readonly kind: 'EventTrigger' } & (
+    | {
+        readonly action: 'create';
+        readonly name: string;
+        /** E.g. `ddl_command_end`. */
+        readonly event: string;
+        /** `WHEN TAG IN (...)` as written, or `null` when the trigger fires for every tag. */
+        readonly tags: readonly string[] | null;
+        readonly function: QualifiedName;
+      }
+    | { readonly action: 'enable'; readonly name: string; readonly state: EventTriggerState }
+    | { readonly action: 'rename'; readonly name: string; readonly newName: string }
+    | { readonly action: 'drop'; readonly names: readonly string[]; readonly ifExists: boolean }
+  );
+
+/** `CREATE [OR REPLACE] FUNCTION | PROCEDURE`. The body is not interpreted. */
+export interface FunctionDefinition extends Base {
+  readonly kind: 'FunctionDefinition';
+  readonly name: QualifiedName;
+  /** `RETURNS event_trigger`: what the `rls_auto_enable` fingerprint looks for (ADR-010). */
+  readonly returnsEventTrigger: boolean;
+}
+
+/** `DROP FUNCTION | PROCEDURE` with one or more names; argument lists are not kept. */
+export interface DropFunctions extends Base {
+  readonly kind: 'DropFunctions';
+  readonly functions: readonly QualifiedName[];
+  readonly ifExists: boolean;
+  readonly cascade: boolean;
+}
+
 /** Keywords that make a `DO` body worth a PARSE002 notice (spec §6.1). */
 export const DYNAMIC_SQL_KEYWORDS = [
   'grant',
@@ -232,7 +287,7 @@ export interface Unparseable extends Base {
   readonly message: string;
 }
 
-/** A valid statement the replay model does not need (SELECT, CREATE FUNCTION, GRANT on functions ...). */
+/** A valid statement the replay model does not need (SELECT, CREATE INDEX, GRANT on functions ...). */
 export interface Unknown extends Base {
   readonly kind: 'Unknown';
   /** The parser's node type, e.g. `CreateFunctionStmt`. */
@@ -254,6 +309,10 @@ export type Statement =
   | RenamePolicy
   | DropPolicy
   | SetRole
+  | AlterTableRowSecurity
+  | EventTrigger
+  | FunctionDefinition
+  | DropFunctions
   | DynamicSql
   | Unparseable
   | Unknown;

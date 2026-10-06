@@ -15,12 +15,14 @@ import {
 import {
   DYNAMIC_SQL_KEYWORDS,
   type DynamicSqlKeyword,
+  type EventTriggerState,
   type ObjectKind,
   type PolicyCommand,
   type PolicyPredicate,
   type Privilege,
   type QualifiedName,
   type RoleRef,
+  type RowSecurityAction,
   SERIAL_TYPES,
   type SerialColumn,
   type SerialType,
@@ -342,6 +344,18 @@ const OBJECT_KINDS: Partial<Record<ObjectType, ObjectKind>> = {
   OBJECT_SEQUENCE: 'sequence',
 };
 
+const ROW_SECURITY_SUBTYPES: Partial<Record<string, RowSecurityAction>> = {
+  AT_EnableRowSecurity: 'enable',
+  AT_DisableRowSecurity: 'disable',
+  AT_ForceRowSecurity: 'force',
+  AT_NoForceRowSecurity: 'no-force',
+};
+
+/** `pg_event_trigger.evtenabled`: `ENABLE` is `O`, so anything unrecognised reads as enabled. */
+function eventTriggerState(tgenabled: string | undefined): EventTriggerState {
+  return tgenabled === 'R' || tgenabled === 'A' || tgenabled === 'D' ? tgenabled : 'O';
+}
+
 function serialColumns(elements: Node[] | undefined): SerialColumn[] {
   const columns: SerialColumn[] = [];
   for (const element of elements ?? []) {
@@ -623,6 +637,15 @@ export function toStatement(node: Node, at: At): Statement {
   }
   if ('RenameStmt' in node) {
     const stmt = node.RenameStmt;
+    if (stmt.renameType === 'OBJECT_EVENT_TRIGGER') {
+      return {
+        kind: 'EventTrigger',
+        ...at,
+        action: 'rename',
+        name: stringList(stmt.object)[0] ?? '',
+        newName: stmt.newname ?? '',
+      };
+    }
     if (stmt.renameType === 'OBJECT_POLICY') {
       return {
         kind: 'RenamePolicy',
@@ -663,6 +686,34 @@ export function toStatement(node: Node, at: At): Statement {
   if ('DropStmt' in node) {
     const stmt = node.DropStmt;
     const ifExists = stmt.missing_ok === true;
+    if (stmt.removeType === 'OBJECT_EVENT_TRIGGER') {
+      return {
+        kind: 'EventTrigger',
+        ...at,
+        action: 'drop',
+        names: (stmt.objects ?? []).flatMap(stringList),
+        ifExists,
+      };
+    }
+    if (
+      stmt.removeType === 'OBJECT_FUNCTION' ||
+      stmt.removeType === 'OBJECT_PROCEDURE' ||
+      stmt.removeType === 'OBJECT_ROUTINE'
+    ) {
+      return {
+        kind: 'DropFunctions',
+        ...at,
+        functions: (stmt.objects ?? []).map((object) =>
+          nameFromParts(
+            'ObjectWithArgs' in object
+              ? (object.ObjectWithArgs.objname ?? []).flatMap(stringList)
+              : [],
+          ),
+        ),
+        ifExists,
+        cascade: stmt.behavior === 'DROP_CASCADE',
+      };
+    }
     if (stmt.removeType === 'OBJECT_POLICY') {
       // `[schema.]table.policy`: one policy per DROP POLICY statement.
       const parts = stringList(stmt.objects?.[0]);
@@ -729,6 +780,58 @@ export function toStatement(node: Node, at: At): Statement {
       ...at,
       role: value === 'none' ? null : value,
       local: stmt.is_local === true,
+    };
+  }
+  if ('AlterTableStmt' in node) {
+    const stmt = node.AlterTableStmt;
+    const actions = (stmt.cmds ?? []).flatMap((cmd) => {
+      const subtype = 'AlterTableCmd' in cmd ? cmd.AlterTableCmd.subtype : undefined;
+      const action = subtype === undefined ? undefined : ROW_SECURITY_SUBTYPES[subtype];
+      return action === undefined ? [] : [action];
+    });
+    if (actions.length === 0) return unknown(at, 'AlterTableStmt');
+    return {
+      kind: 'AlterTableRowSecurity',
+      ...at,
+      relation: qualified(stmt.relation),
+      ifExists: stmt.missing_ok === true,
+      only: stmt.relation?.inh !== true,
+      actions,
+    };
+  }
+  if ('CreateEventTrigStmt' in node) {
+    const stmt = node.CreateEventTrigStmt;
+    const tags = (stmt.whenclause ?? []).flatMap((when) =>
+      'DefElem' in when && when.DefElem.defname === 'tag' ? stringList(when.DefElem.arg) : [],
+    );
+    return {
+      kind: 'EventTrigger',
+      ...at,
+      action: 'create',
+      name: stmt.trigname ?? '',
+      event: stmt.eventname ?? '',
+      tags: stmt.whenclause === undefined ? null : tags,
+      function: nameFromParts((stmt.funcname ?? []).flatMap(stringList)),
+    };
+  }
+  if ('AlterEventTrigStmt' in node) {
+    const stmt = node.AlterEventTrigStmt;
+    return {
+      kind: 'EventTrigger',
+      ...at,
+      action: 'enable',
+      name: stmt.trigname ?? '',
+      state: eventTriggerState(stmt.tgenabled),
+    };
+  }
+  if ('CreateFunctionStmt' in node) {
+    const stmt = node.CreateFunctionStmt;
+    const returns = (stmt.returnType?.names ?? []).flatMap(stringList);
+    return {
+      kind: 'FunctionDefinition',
+      ...at,
+      name: nameFromParts((stmt.funcname ?? []).flatMap(stringList)),
+      returnsEventTrigger: returns[returns.length - 1] === 'event_trigger',
     };
   }
   if ('DoStmt' in node) {

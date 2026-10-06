@@ -286,8 +286,8 @@ describe('DROP', () => {
     expect(s.objects).toEqual([{ schema: 'public', name: 'v' }]);
   });
 
-  it('leaves DROP FUNCTION and DROP INDEX Unknown', () => {
-    expect(kinds('drop function f(); drop index i;')).toEqual(['Unknown', 'Unknown']);
+  it('maps DROP FUNCTION to DropFunctions and leaves DROP INDEX Unknown', () => {
+    expect(kinds('drop function f(); drop index i;')).toEqual(['DropFunctions', 'Unknown']);
   });
 });
 
@@ -751,8 +751,8 @@ describe('Unknown', () => {
       insert into public.todos (title) values ('x');
       create index on public.todos (title);
       comment on table public.todos is 'grant all; create table public.x (id int)';
-      create function public.f() returns int language plpgsql as $$ begin perform 1; create table public.inner_t (id int); return 1; end $$;
-      alter table public.todos enable row level security;
+      create trigger t before insert on public.todos for each row execute function public.f();
+      alter table public.todos add column done boolean;
       alter table public.todos owner to postgres;
       create extension if not exists pgcrypto;
       commit;
@@ -765,7 +765,7 @@ describe('Unknown', () => {
       'InsertStmt',
       'IndexStmt',
       'CommentStmt',
-      'CreateFunctionStmt',
+      'CreateTrigStmt',
       'AlterTableStmt',
       'AlterTableStmt',
       'CreateExtensionStmt',
