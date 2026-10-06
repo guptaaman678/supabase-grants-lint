@@ -552,6 +552,32 @@ describe('service role only policy expressions for ADR 012', () => {
     for (const expr of OTHER) expect(using(expr), expr).toBe('other');
   });
 
+  it('classifies the constant false, bare or cast to bool, as false (ADR-019)', () => {
+    for (const expr of [
+      'false',
+      'FALSE',
+      'false::boolean',
+      'false::bool',
+      'cast(false as boolean)',
+    ]) {
+      expect(using(expr), expr).toBe('false');
+    }
+    for (const expr of [
+      "'f'",
+      "'false'::boolean",
+      'not true',
+      'false or auth.uid() = user_id',
+      'false and true',
+      'false::text',
+      'false::boolean[]',
+      'false::public.bool',
+      'null',
+      '1 = 0',
+    ]) {
+      expect(using(expr), expr).toBe('other');
+    }
+  });
+
   it('classifies USING and WITH CHECK separately and reports absent ones as null', () => {
     expect(
       one(

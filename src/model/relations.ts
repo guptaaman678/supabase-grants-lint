@@ -52,12 +52,13 @@ export interface Policy {
 }
 
 /**
- * ADR-012: a policy whose every `USING` / `WITH CHECK` expression only tests for `service_role`
- * never admits a client role, and `service_role` bypasses RLS, so it is not client access control.
+ * A policy whose every `USING` / `WITH CHECK` expression only tests for `service_role` (ADR-012)
+ * or is the constant `false` (ADR-019) never admits a client role, and `service_role` bypasses
+ * RLS, so it is not client access control.
  */
-export function isServiceRoleOnly(policy: Pick<Policy, 'using' | 'withCheck'>): boolean {
+export function admitsNoClient(policy: Pick<Policy, 'using' | 'withCheck'>): boolean {
   const predicates = [policy.using, policy.withCheck].filter((p) => p !== null);
-  return predicates.length > 0 && predicates.every((p) => p === 'service_role');
+  return predicates.length > 0 && predicates.every((p) => p === 'service_role' || p === 'false');
 }
 
 function key({ schema, name }: RelationName): string {

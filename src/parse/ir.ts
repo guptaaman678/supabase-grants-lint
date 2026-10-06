@@ -60,11 +60,11 @@ export interface Privilege {
 export type PolicyCommand = 'all' | 'select' | 'insert' | 'update' | 'delete';
 
 /**
- * How a policy's `USING` or `WITH CHECK` expression reads (ADR-012): `service_role` when it is
- * only a test that the request role is `service_role` (for example `auth.role() = 'service_role'`),
- * `other` for anything else.
+ * How a policy's `USING` or `WITH CHECK` expression reads: `service_role` when it is only a test
+ * that the request role is `service_role` (for example `auth.role() = 'service_role'`, ADR-012),
+ * `false` when it is the constant `false` (ADR-019), `other` for anything else.
  */
-export type PolicyPredicate = 'service_role' | 'other';
+export type PolicyPredicate = 'service_role' | 'false' | 'other';
 
 interface Base extends SourceLocation {
   /** Source text of the statement, without the trailing `;`. */

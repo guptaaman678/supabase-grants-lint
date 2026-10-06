@@ -449,7 +449,8 @@ function constString(node: Node | undefined): string | null {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Service-role-only policy expressions (ADR-012). The parser drops parentheses already.
+// Policy expressions that admit no client: service-role-only tests (ADR-012) and the constant
+// `false` (ADR-019). The parser drops parentheses already.
 
 /** The operands of a binary `op` expression, or `null` when `node` is anything else. */
 function operands(node: Node, op: string): [Node | undefined, Node | undefined] | null {
@@ -529,9 +530,18 @@ function isRequestRole(node: Node | undefined): boolean {
   return setting !== null && isSetting(setting, 'request.jwt.claims');
 }
 
+/** The constant `false`, bare or cast to `bool` (ADR-019). */
+function isFalse(node: Node): boolean {
+  const value = castOperand(node, 'bool') ?? node;
+  return (
+    'A_Const' in value && value.A_Const.boolval !== undefined && !value.A_Const.boolval.boolval
+  );
+}
+
 /** Classifies a policy's `USING` or `WITH CHECK` expression; `null` when it is absent. */
 export function policyPredicate(node: Node | undefined): PolicyPredicate | null {
   if (node === undefined) return null;
+  if (isFalse(node)) return 'false';
   const sides = operands(node, '=');
   if (sides === null) return 'other';
   const [left, right] = [unwrap(sides[0]), unwrap(sides[1])];

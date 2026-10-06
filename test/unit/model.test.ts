@@ -10,7 +10,7 @@ import {
   TABLE_PRIVILEGES,
 } from '../../src/model/acl.js';
 import { DefaultPrivileges, LEGACY_DEFAULTS } from '../../src/model/defaults.js';
-import { Catalog, isServiceRoleOnly, type Policy } from '../../src/model/relations.js';
+import { admitsNoClient, Catalog, type Policy } from '../../src/model/relations.js';
 import type { SourceLocation } from '../../src/parse/ir.js';
 
 const FILE = 'supabase/migrations/20261002120000_add_todos.sql';
@@ -34,17 +34,24 @@ function policy(overrides: Partial<Policy> = {}): Policy {
   };
 }
 
-describe('isServiceRoleOnly (ADR-012)', () => {
+describe('admitsNoClient (ADR-012, ADR-019)', () => {
   it.each([
     ['service_role', null, true],
     [null, 'service_role', true],
     ['service_role', 'service_role', true],
+    ['false', null, true],
+    [null, 'false', true],
+    ['false', 'false', true],
+    ['false', 'service_role', true],
+    ['service_role', 'false', true],
     [null, null, false],
     ['other', null, false],
     ['service_role', 'other', false],
     ['other', 'service_role', false],
+    ['false', 'other', false],
+    ['other', 'false', false],
   ] as const)('using %s, with check %s -> %s', (using, withCheck, expected) => {
-    expect(isServiceRoleOnly({ using, withCheck })).toBe(expected);
+    expect(admitsNoClient({ using, withCheck })).toBe(expected);
   });
 });
 

@@ -273,7 +273,7 @@ describe('GL003 dead-policy', () => {
     // An ALTER without TO re-checks the policy's roles too.
     const using = lint([
       `${TODOS}\ngrant select on public.todos to anon;\n${READ}`,
-      'alter policy "r" on public.todos using (false);',
+      'alter policy "r" on public.todos using (auth.uid() is not null);',
     ]);
     expect(summary(using)).toEqual([
       '3 error public.todos authenticated select grant select on public.todos to authenticated;',
@@ -283,6 +283,12 @@ describe('GL003 dead-policy', () => {
       'supabase/migrations/20261002000000_m.sql',
       'supabase/migrations/20261003000000_m.sql',
     ]);
+    // Altered to deny every row (ADR-019): no longer client access control, so not re-checked.
+    const denyAll = lint([
+      `${TODOS}\ngrant select on public.todos to anon;\n${READ}`,
+      'alter policy "r" on public.todos using (false);',
+    ]);
+    expect(denyAll.map((f) => f.file)).toEqual(['supabase/migrations/20261002000000_m.sql']);
   });
 
   it('anchors at the CREATE when the policy is created and altered in the same file', () => {
