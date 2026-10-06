@@ -23,8 +23,11 @@ function move(
   } else if (catalog.sequence(from) !== undefined) {
     ctx.catalog = catalog.moveSequence(from, to);
     ctx.events.push({ kind: 'moved', at, object: 'sequence', from, to });
-  } else if (stmt.objectKind !== 'sequence' && catalog.policiesOn(from).length > 0) {
-    // A relation created outside the migrations still takes its policies along.
+  } else if (
+    stmt.objectKind !== 'sequence' &&
+    (catalog.policiesOn(from).length > 0 || catalog.listsInPublication(from))
+  ) {
+    // A relation created outside the migrations still takes its policies and publications along.
     ctx.catalog = catalog.moveRelation(from, to);
   }
 }

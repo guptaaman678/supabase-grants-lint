@@ -1,6 +1,7 @@
 /**
  * The model state added for the engine export (row level security, event triggers, the automatic
- * RLS fingerprint) must not change anything grants-lint reports. The same project is linted with
+ * RLS fingerprint, publications and the bodies that change them) must not change anything
+ * grants-lint reports. The same project is linted with
  * and without every new statement shape, appended at the ends of files so no other statement
  * moves; findings, notices, the summary, `explain` and `doctor` must be equal.
  */
@@ -44,14 +45,31 @@ create event trigger ensure_rls on ddl_command_end when tag in ('CREATE TABLE', 
 create event trigger audit_ddl on ddl_command_start execute procedure public.audit();
 alter event trigger audit_ddl disable;
 alter event trigger audit_ddl enable always;
-alter event trigger audit_ddl rename to audit_ddl_2;`,
+alter event trigger audit_ddl rename to audit_ddl_2;
+create publication audit_pub for table public.todos, public.orders (id) where (id > 0);
+create publication all_pub for all tables;
+create publication schema_pub for tables in schema public, current_schema;
+alter publication supabase_realtime add table only public.todos, public.orders;
+alter publication supabase_realtime owner to postgres;
+alter publication audit_pub set (publish = 'insert');
+create or replace function public.seed_realtime() returns void language plpgsql as $$ begin execute format('alter publication supabase_realtime add table public.%I', 'todos'); end $$;
+select public.seed_realtime();
+do $$ begin alter publication supabase_realtime add table public.orders; end $$;`,
   `
 alter table public.messages disable row level security, no force row level security;
 drop event trigger if exists audit_ddl_2, missing;
-alter event trigger ensure_rls enable replica;`,
+alter event trigger ensure_rls enable replica;
+alter publication supabase_realtime drop table public.todos;
+alter publication schema_pub set table public.messages, tables in schema private;
+alter publication audit_pub rename to audit_pub_2;
+call public.seed_realtime();
+do $$ begin execute format('alter publication %I add table public.messages', 'audit_pub_2'); end $$;
+create publication supabase_realtime;`,
   `
 drop function if exists public.rls_auto_enable() cascade;
-drop procedure if exists public.audit;`,
+drop procedure if exists public.audit;
+drop publication if exists all_pub, missing_pub;
+drop function if exists public.seed_realtime();`,
 ];
 
 function project(name: string, withAdded: boolean): string {

@@ -239,6 +239,7 @@ function validateKey(c: Collector, key: ConfigKey, value: unknown): unknown {
       return c.stringList(key, value, 1);
     case 'clientRoles':
     case 'serviceOnly':
+    case 'platformPublications':
       return c.stringList(key, value, 0);
     case 'migrationRole':
     case 'serviceRole':

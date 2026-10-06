@@ -251,6 +251,8 @@ export interface FunctionDefinition extends Base {
   readonly name: QualifiedName;
   /** `RETURNS event_trigger`: what the `rls_auto_enable` fingerprint looks for (ADR-010). */
   readonly returnsEventTrigger: boolean;
+  /** Publications the body alters, creates or drops (`publicationMentions`). */
+  readonly publicationMentions: readonly PublicationMention[];
 }
 
 /** `DROP FUNCTION | PROCEDURE` with one or more names; argument lists are not kept. */
@@ -260,6 +262,47 @@ export interface DropFunctions extends Base {
   readonly ifExists: boolean;
   readonly cascade: boolean;
 }
+
+/**
+ * A top-level `SELECT f(), g()` (only function calls, no `FROM`) or `CALL p()`: what makes a
+ * function body that changes publications run in a migration.
+ */
+export interface FunctionCall extends Base {
+  readonly kind: 'FunctionCall';
+  readonly functions: readonly QualifiedName[];
+}
+
+/**
+ * A publication named in an `ALTER | CREATE | DROP PUBLICATION` inside a body the replay does not
+ * interpret, or `'*'` when the name is not a plain or quoted identifier (`%I` in `format()`).
+ */
+export type PublicationMention = string;
+
+/** Tables and schemas a publication statement lists; `null` is `CURRENT_SCHEMA`. */
+export interface PublicationObjects {
+  readonly tables: readonly QualifiedName[];
+  readonly schemas: readonly (string | null)[];
+}
+
+/**
+ * `CREATE | ALTER | DROP PUBLICATION`. Row filters, column lists and `publish` options are not
+ * kept: the model is membership only. `ALTER PUBLICATION ... OWNER TO` and `SET (...)` are `noop`.
+ */
+export type Publication = Base & { readonly kind: 'Publication' } & (
+    | ({
+        readonly action: 'create';
+        readonly name: string;
+        readonly allTables: boolean;
+      } & PublicationObjects)
+    | ({
+        readonly action: 'alter';
+        readonly name: string;
+        readonly op: 'add' | 'drop' | 'set';
+      } & PublicationObjects)
+    | { readonly action: 'rename'; readonly name: string; readonly newName: string }
+    | { readonly action: 'drop'; readonly names: readonly string[]; readonly ifExists: boolean }
+    | { readonly action: 'noop'; readonly name: string; readonly change: 'owner' | 'options' }
+  );
 
 /** Keywords that make a `DO` body worth a PARSE002 notice (spec §6.1). */
 export const DYNAMIC_SQL_KEYWORDS = [
@@ -278,6 +321,8 @@ export interface DynamicSql extends Base {
   readonly body: string;
   /** Which of `DYNAMIC_SQL_KEYWORDS` the body mentions; PARSE002 fires when non-empty. */
   readonly mentions: readonly DynamicSqlKeyword[];
+  /** Publications the body alters, creates or drops; separate from `mentions` (engine only). */
+  readonly publicationMentions: readonly PublicationMention[];
 }
 
 /** A statement the parser rejected (PARSE001). It is skipped. */
@@ -313,6 +358,8 @@ export type Statement =
   | EventTrigger
   | FunctionDefinition
   | DropFunctions
+  | FunctionCall
+  | Publication
   | DynamicSql
   | Unparseable
   | Unknown;

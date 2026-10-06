@@ -10,6 +10,7 @@ import {
   type RawStmt,
   type RoleSpec,
   type ScanToken,
+  type SelectStmt,
   scanSync,
 } from 'libpg-query';
 import {
@@ -20,6 +21,8 @@ import {
   type PolicyCommand,
   type PolicyPredicate,
   type Privilege,
+  type PublicationMention,
+  type PublicationObjects,
   type QualifiedName,
   type RoleRef,
   type RowSecurityAction,
@@ -386,6 +389,85 @@ export function dynamicSqlMentions(body: string): DynamicSqlKeyword[] {
   return DYNAMIC_SQL_KEYWORDS.filter((keyword) => KEYWORD_PATTERNS[keyword].test(body));
 }
 
+const PUBLICATION_VERB = /\b(?:alter|create|drop)\s+publication\s+(?:if\s+exists\s+)?/gi;
+const QUOTED_NAME = /^"((?:[^"]|"")+)"/;
+const PLAIN_NAME = /^[a-z_\u0080-￿][a-z0-9_$\u0080-￿]*/i;
+/** What may follow a literal name: anything else (`%`, `' ||`) means the name is built at run time. */
+const NAME_END = /^(?:$|[\s;,)]|'(?!\s*\|\|))/;
+
+/**
+ * The publications a body the replay does not interpret alters, creates or drops (ADR-015): the
+ * name after `ALTER | CREATE | DROP PUBLICATION [IF EXISTS]`, case-insensitive, quoted or not, and
+ * a comma list after it. A name built at run time (`%I` in `format()`, `' || name`) yields `'*'`.
+ */
+export function publicationMentions(body: string): PublicationMention[] {
+  const found = new Set<PublicationMention>();
+  for (const match of body.matchAll(PUBLICATION_VERB)) {
+    let rest = body.slice(match.index + match[0].length);
+    for (;;) {
+      const quoted = QUOTED_NAME.exec(rest);
+      const plain = quoted === null ? PLAIN_NAME.exec(rest) : null;
+      const written = quoted ?? plain;
+      if (written === null || !NAME_END.test(rest.slice(written[0].length))) {
+        found.add('*');
+        break;
+      }
+      found.add(
+        quoted === null ? written[0].toLowerCase() : (quoted[1] ?? '').replaceAll('""', '"'),
+      );
+      rest = rest.slice(written[0].length);
+      const comma = /^\s*,\s*/.exec(rest);
+      if (comma === null) break;
+      rest = rest.slice(comma[0].length);
+    }
+  }
+  return [...found];
+}
+
+/** The tables and schemas of a publication statement; row filters and column lists are dropped. */
+function publicationObjects(nodes: Node[] | undefined): PublicationObjects {
+  const tables: QualifiedName[] = [];
+  const schemas: (string | null)[] = [];
+  for (const node of nodes ?? []) {
+    if (!('PublicationObjSpec' in node)) continue;
+    const spec = node.PublicationObjSpec;
+    switch (spec.pubobjtype) {
+      case 'PUBLICATIONOBJ_TABLE':
+        tables.push(qualified(spec.pubtable?.relation));
+        break;
+      case 'PUBLICATIONOBJ_TABLES_IN_SCHEMA':
+        schemas.push(spec.name ?? '');
+        break;
+      case 'PUBLICATIONOBJ_TABLES_IN_CUR_SCHEMA':
+        schemas.push(null);
+        break;
+    }
+  }
+  return { tables, schemas };
+}
+
+const PUBLICATION_OPS: Partial<Record<string, 'add' | 'drop' | 'set'>> = {
+  AP_AddObjects: 'add',
+  AP_DropObjects: 'drop',
+  AP_SetObjects: 'set',
+};
+
+/** The functions a top-level `SELECT f(), g()` calls, or `null` when it is any other query. */
+function selectedFunctions(stmt: SelectStmt): QualifiedName[] | null {
+  const targets = stmt.targetList ?? [];
+  // `VALUES` has no targets; `SELECT ... INTO` creates a table.
+  if (targets.length === 0 || stmt.fromClause !== undefined || stmt.intoClause !== undefined) {
+    return null;
+  }
+  const functions: QualifiedName[] = [];
+  for (const target of targets) {
+    const value = 'ResTarget' in target ? target.ResTarget.val : undefined;
+    if (value === undefined || !('FuncCall' in value)) return null;
+    functions.push(nameFromParts((value.FuncCall.funcname ?? []).flatMap(stringList)));
+  }
+  return functions;
+}
+
 function grantStatement(grant: GrantStmt, at: At): Statement {
   const objectKind =
     grant.objtype === 'OBJECT_TABLE'
@@ -637,6 +719,15 @@ export function toStatement(node: Node, at: At): Statement {
   }
   if ('RenameStmt' in node) {
     const stmt = node.RenameStmt;
+    if (stmt.renameType === 'OBJECT_PUBLICATION') {
+      return {
+        kind: 'Publication',
+        ...at,
+        action: 'rename',
+        name: stringList(stmt.object)[0] ?? '',
+        newName: stmt.newname ?? '',
+      };
+    }
     if (stmt.renameType === 'OBJECT_EVENT_TRIGGER') {
       return {
         kind: 'EventTrigger',
@@ -686,6 +777,15 @@ export function toStatement(node: Node, at: At): Statement {
   if ('DropStmt' in node) {
     const stmt = node.DropStmt;
     const ifExists = stmt.missing_ok === true;
+    if (stmt.removeType === 'OBJECT_PUBLICATION') {
+      return {
+        kind: 'Publication',
+        ...at,
+        action: 'drop',
+        names: (stmt.objects ?? []).flatMap(stringList),
+        ifExists,
+      };
+    }
     if (stmt.removeType === 'OBJECT_EVENT_TRIGGER') {
       return {
         kind: 'EventTrigger',
@@ -827,12 +927,72 @@ export function toStatement(node: Node, at: At): Statement {
   if ('CreateFunctionStmt' in node) {
     const stmt = node.CreateFunctionStmt;
     const returns = (stmt.returnType?.names ?? []).flatMap(stringList);
+    // `AS 'body'` (or `AS 'file', 'symbol'`); a `BEGIN ATOMIC` body cannot hold DDL.
+    const body = (stmt.options ?? [])
+      .flatMap((option) =>
+        'DefElem' in option && option.DefElem.defname === 'as'
+          ? stringList(option.DefElem.arg)
+          : [],
+      )
+      .join('\n');
     return {
       kind: 'FunctionDefinition',
       ...at,
       name: nameFromParts((stmt.funcname ?? []).flatMap(stringList)),
       returnsEventTrigger: returns[returns.length - 1] === 'event_trigger',
+      publicationMentions: publicationMentions(body),
     };
+  }
+  if ('CreatePublicationStmt' in node) {
+    const stmt = node.CreatePublicationStmt;
+    return {
+      kind: 'Publication',
+      ...at,
+      action: 'create',
+      name: stmt.pubname ?? '',
+      allTables: stmt.for_all_tables === true,
+      ...publicationObjects(stmt.pubobjects),
+    };
+  }
+  if ('AlterPublicationStmt' in node) {
+    const stmt = node.AlterPublicationStmt;
+    const op = stmt.action === undefined ? undefined : PUBLICATION_OPS[stmt.action];
+    // `SET (publish = ...)` parses as an add without objects.
+    if (stmt.pubobjects === undefined || op === undefined) {
+      return {
+        kind: 'Publication',
+        ...at,
+        action: 'noop',
+        name: stmt.pubname ?? '',
+        change: 'options',
+      };
+    }
+    return {
+      kind: 'Publication',
+      ...at,
+      action: 'alter',
+      name: stmt.pubname ?? '',
+      op,
+      ...publicationObjects(stmt.pubobjects),
+    };
+  }
+  if ('AlterOwnerStmt' in node && node.AlterOwnerStmt.objectType === 'OBJECT_PUBLICATION') {
+    return {
+      kind: 'Publication',
+      ...at,
+      action: 'noop',
+      name: stringList(node.AlterOwnerStmt.object)[0] ?? '',
+      change: 'owner',
+    };
+  }
+  if ('SelectStmt' in node) {
+    const functions = selectedFunctions(node.SelectStmt);
+    if (functions === null) return unknown(at, 'SelectStmt');
+    return { kind: 'FunctionCall', ...at, functions };
+  }
+  if ('CallStmt' in node) {
+    const name = (node.CallStmt.funccall?.funcname ?? []).flatMap(stringList);
+    return { kind: 'FunctionCall', ...at, functions: [nameFromParts(name)] };
   }
   if ('DoStmt' in node) {
     let body = '';
@@ -843,7 +1003,14 @@ export function toStatement(node: Node, at: At): Statement {
       if (arg.DefElem.defname === 'as') body = value;
       if (arg.DefElem.defname === 'language') language = value;
     }
-    return { kind: 'DynamicSql', ...at, language, body, mentions: dynamicSqlMentions(body) };
+    return {
+      kind: 'DynamicSql',
+      ...at,
+      language,
+      body,
+      mentions: dynamicSqlMentions(body),
+      publicationMentions: publicationMentions(body),
+    };
   }
   return unknown(at, nodeTypeOf(node));
 }

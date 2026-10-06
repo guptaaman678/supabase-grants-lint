@@ -51,6 +51,7 @@ with a suggestion for typos.
 | `platformDefaults`      | `"legacy"` or `"explicit"`               | `"legacy"`                  |
 | `platformRevokeAtSince` | boolean                                  | `true`                      |
 | `autoRls`               | `"auto"`, `"on"` or `"off"`              | `"auto"`                    |
+| `platformPublications`  | string[]                                 | `["supabase_realtime"]`     |
 | `migrationRole`         | string                                   | `"postgres"`                |
 | `clientRoles`           | string[]                                 | `["anon", "authenticated"]` |
 | `serviceRole`           | string                                   | `"service_role"`            |
@@ -135,6 +136,14 @@ says when the replay assumes it.
   dropped, because a pulled baseline keeps that function but not the trigger.
 - `"on"`: from the first migration.
 - `"off"`: only explicit `alter table ... enable row level security` statements count.
+
+### platformPublications
+
+For the engine export only: grants-lint's rules do not read publications, so this key never
+changes their output. The publications that exist, with no tables, before the first migration.
+Supabase's database image creates `supabase_realtime` empty (hosted projects, the local stack and
+preview branches alike), so migrations usually only `alter` it. Set `[]` for Postgres outside
+Supabase.
 
 ### migrationRole
 

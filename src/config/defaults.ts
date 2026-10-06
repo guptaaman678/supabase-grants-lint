@@ -52,6 +52,8 @@ export interface Config {
   readonly platformRevokeAtSince: boolean;
   /** Automatic RLS from the `ensure_rls` trigger (engine only). */
   readonly autoRls: AutoRlsMode;
+  /** Publications that exist, empty, before the first migration (engine only). */
+  readonly platformPublications: readonly string[];
   readonly migrationRole: string;
   readonly clientRoles: readonly string[];
   readonly serviceRole: string;
@@ -74,6 +76,7 @@ export const DEFAULT_CONFIG: Config = {
   platformDefaults: 'legacy',
   platformRevokeAtSince: true,
   autoRls: 'auto',
+  platformPublications: ['supabase_realtime'],
   migrationRole: 'postgres',
   clientRoles: ['anon', 'authenticated'],
   serviceRole: 'service_role',

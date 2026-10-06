@@ -3,7 +3,7 @@
  * catalog, and keeps the catalog as it stands at the end of each file. Rules read those end-of-file
  * snapshots: grants later in the same file count, grants in a later file do not.
  */
-import type { AutoRlsMode, PlatformDefaults } from '../config/defaults.js';
+import { type AutoRlsMode, DEFAULT_CONFIG, type PlatformDefaults } from '../config/defaults.js';
 import { DefaultPrivileges } from '../model/defaults.js';
 import { Catalog, type Policy, type Relation, type RelationName } from '../model/relations.js';
 import type { SourceLocation, Statement } from '../parse/ir.js';
@@ -14,6 +14,13 @@ import { dropObjects } from './handlers/drop.js';
 import { grant } from './handlers/grant.js';
 import { renameObject, setSchema } from './handlers/move.js';
 import { alterPolicy, createPolicy, dropPolicy, renamePolicy } from './handlers/policy.js';
+import {
+  dropPublicationFunctions,
+  dynamicSqlPublications,
+  functionCall,
+  functionPublications,
+  publication,
+} from './handlers/publication.js';
 import { setRole } from './handlers/role.js';
 import {
   alterTableRowSecurity,
@@ -46,6 +53,8 @@ export interface EngineOptions extends ReplayOptions {
   readonly platformRevokeBefore?: number | null;
   /** Config `autoRls`; default `"auto"`. Only the engine export reads the RLS state it drives. */
   readonly autoRls?: AutoRlsMode;
+  /** Config `platformPublications`: publications that exist, empty, before the first file. */
+  readonly platformPublications?: readonly string[];
 }
 
 /** A relation whose CREATE statement the replay saw. */
@@ -127,11 +136,20 @@ function apply(stmt: Statement, ctx: ReplayContext): void {
       break;
     case 'FunctionDefinition':
       functionDefinition(stmt, ctx);
+      functionPublications(stmt, ctx);
       break;
     case 'DropFunctions':
       dropFunctions(stmt, ctx);
+      dropPublicationFunctions(stmt, ctx);
+      break;
+    case 'FunctionCall':
+      functionCall(stmt, ctx);
+      break;
+    case 'Publication':
+      publication(stmt, ctx);
       break;
     case 'DynamicSql':
+      dynamicSqlPublications(stmt, ctx);
       dynamicSql(stmt, ctx);
       break;
     case 'Unparseable':
@@ -149,6 +167,7 @@ export function replay(inputs: readonly ReplayInput[], options: EngineOptions): 
   const initial = Catalog.create(
     DefaultPrivileges.initial(options.platformDefaults),
     options.autoRls,
+    options.platformPublications ?? DEFAULT_CONFIG.platformPublications,
   );
   let catalog = initial;
   const files = inputs.map((input, index): FileReplay => {

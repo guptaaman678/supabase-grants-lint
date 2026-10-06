@@ -81,6 +81,12 @@
       "enum": ["auto", "on", "off"],
       "default": "auto"
     },
+    "platformPublications": {
+      "description": "Engine export only (grants-lint's rules ignore it): publications that exist, empty, before the first migration, because the database image creates them. [] for Postgres outside Supabase.",
+      "type": "array",
+      "items": { "type": "string" },
+      "default": ["supabase_realtime"]
+    },
     "migrationRole": {
       "description": "Role that runs the migrations and creates the relations; its default privileges apply to new relations.",
       "type": "string",
