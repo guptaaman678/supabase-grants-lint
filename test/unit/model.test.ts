@@ -475,6 +475,22 @@ describe('Catalog', () => {
     expect(() => c.setSequenceAcl(todos, acl)).toThrow('not tracked');
   });
 
+  it('starts relations with RLS off, replaces it on a tracked one, and refuses untracked ones', () => {
+    const c = legacy.createRelation(todos, 'table', 'postgres', at(1));
+    expect(c.relation(todos)?.rls).toEqual({
+      enabled: false,
+      forced: false,
+      source: 'default',
+      at: null,
+    });
+    const rls = { enabled: true, forced: true, source: 'statement', at: at(2) } as const;
+    expect(c.setRelationRls(todos, rls).relation(todos)).toMatchObject({
+      rls,
+      acl: c.relation(todos)?.acl,
+    });
+    expect(() => c.setRelationRls(orders, rls)).toThrow('not tracked');
+  });
+
   it('drops a relation with its policies and owned sequences, and nothing else', () => {
     const c = legacy
       .createRelation(todos, 'table', 'postgres', at(1))

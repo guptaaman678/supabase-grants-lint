@@ -55,7 +55,7 @@ function fileOf(result: ReplayResult, n: number): FileReplay {
   return file;
 }
 
-const OFF: RowSecurity ={ enabled: false, forced: false, source: 'default', at: null };
+const OFF: RowSecurity = { enabled: false, forced: false, source: 'default', at: null };
 
 describe('parse: ALTER TABLE ... ROW LEVEL SECURITY', () => {
   it('maps each of the four subcommands', () => {
