@@ -54,6 +54,37 @@ function unseen(name: string, at: SourceLocation): PublicationState {
   };
 }
 
+/**
+ * `ALTER PUBLICATION ... ADD | DROP | SET`. Explicit statements change known members but keep the
+ * uncertain mark (ADR-015); while it is set, the tables they remove become `excluded`.
+ */
+function altered(
+  current: PublicationState,
+  op: 'add' | 'drop' | 'set',
+  { tables, schemas }: { tables: RelationName[]; schemas: string[] },
+): PublicationState {
+  const removed = (gone: readonly RelationName[]): RelationName[] =>
+    current.uncertain === null ? [] : union(current.excluded, gone);
+  switch (op) {
+    case 'add':
+      return {
+        ...current,
+        tables: union(current.tables, tables),
+        schemas: [...new Set([...current.schemas, ...schemas])],
+        excluded: minus(current.excluded, tables),
+      };
+    case 'drop':
+      return {
+        ...current,
+        tables: minus(current.tables, tables),
+        schemas: current.schemas.filter((s) => !schemas.includes(s)),
+        excluded: removed(tables),
+      };
+    case 'set':
+      return { ...current, tables, schemas, excluded: minus(removed(current.tables), tables) };
+  }
+}
+
 export function publication(stmt: Publication, ctx: ReplayContext): void {
   const at = locate(stmt);
   const { catalog } = ctx;
@@ -81,36 +112,7 @@ export function publication(stmt: Publication, ctx: ReplayContext): void {
     }
     case 'alter': {
       const current = catalog.publication(stmt.name) ?? unseen(stmt.name, at);
-      const { tables, schemas } = objects(stmt);
-      // Explicit statements change known members but keep the uncertain mark (ADR-015).
-      const removed = (gone: readonly RelationName[]): RelationName[] =>
-        current.uncertain === null ? [] : union(current.excluded, gone);
-      switch (stmt.op) {
-        case 'add':
-          ctx.catalog = catalog.putPublication({
-            ...current,
-            tables: union(current.tables, tables),
-            schemas: [...new Set([...current.schemas, ...schemas])],
-            excluded: minus(current.excluded, tables),
-          });
-          return;
-        case 'drop':
-          ctx.catalog = catalog.putPublication({
-            ...current,
-            tables: minus(current.tables, tables),
-            schemas: current.schemas.filter((s) => !schemas.includes(s)),
-            excluded: removed(tables),
-          });
-          return;
-        case 'set':
-          ctx.catalog = catalog.putPublication({
-            ...current,
-            tables,
-            schemas,
-            excluded: minus(removed(current.tables), tables),
-          });
-          return;
-      }
+      ctx.catalog = catalog.putPublication(altered(current, stmt.op, objects(stmt)));
       return;
     }
     case 'rename': {
