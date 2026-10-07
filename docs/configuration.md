@@ -125,7 +125,7 @@ notice naming the file. Set `false` to replay without it.
 
 ### autoRls
 
-For the engine export only: grants-lint's rules do not read row level security, so this key never
+For the [engine export](engine.md) only: grants-lint's rules do not read row level security, so this key never
 changes their output. Supabase offers an opt-in template that enables row level security on every
 new table in `public` (event trigger `ensure_rls` calling `public.rls_auto_enable()`). This key
 says when the replay assumes it.
@@ -139,7 +139,7 @@ says when the replay assumes it.
 
 ### platformPublications
 
-For the engine export only: grants-lint's rules do not read publications, so this key never
+For the [engine export](engine.md) only: grants-lint's rules do not read publications, so this key never
 changes their output. The publications that exist, with no tables, before the first migration.
 Supabase's database image creates `supabase_realtime` empty (hosted projects, the local stack and
 preview branches alike), so migrations usually only `alter` it. Set `[]` for Postgres outside

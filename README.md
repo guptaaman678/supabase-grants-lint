@@ -160,7 +160,8 @@ The migrations are parsed with the real Postgres parser and replayed, in order, 
 which role holds which privilege on which table and sequence, including default privileges and
 row level security policies. Each migration is checked against that model at its end, so a grant
 later in the same file counts and a grant in a later file does not. Details and limitations (dynamic
-SQL, objects created outside migrations): [docs/how-it-works.md](docs/how-it-works.md).
+SQL, objects created outside migrations): [docs/how-it-works.md](docs/how-it-works.md). The same
+replay is available to other tools as a library (experimental): [docs/engine.md](docs/engine.md).
 
 Not affiliated with or endorsed by Supabase.
 
