@@ -100,6 +100,22 @@ describe('toSnapshot', () => {
   });
 });
 
+describe('toSnapshot ordering of names already in order', () => {
+  it('keeps tables of one schema in name order', () => {
+    const tables = ['a', 'b', 'c', 'd'].map((name) => ({ schema: 'public', name }));
+    const catalog = Catalog.create(undefined, 'auto', []).putPublication({
+      name: 'p',
+      origin: 'migration',
+      allTables: false,
+      schemas: [],
+      tables,
+      uncertain: null,
+      excluded: [],
+    });
+    expect(toSnapshot(catalog, META).publications[0]?.tables).toEqual(tables);
+  });
+});
+
 describe('Acl.ownLevel', () => {
   it("reports the grantee's own level, without PUBLIC", () => {
     const acl = Acl.EMPTY.grant([PUBLIC], ['select']).grant(
@@ -109,6 +125,7 @@ describe('Acl.ownLevel', () => {
     expect(acl.ownLevel('anon', 'select')).toBeNull();
     expect(acl.ownLevel('anon', 'update')).toBe('columns');
     expect(acl.ownLevel(PUBLIC, 'select')).toBe('object');
+    expect(acl.ownLevel('authenticated', 'select')).toBeNull();
   });
 });
 
@@ -156,7 +173,7 @@ describe('publicationMembership', () => {
   const todos = { schema: 'public', name: 'todos' };
 
   it.each([
-    ['no such publication', {}, 'other', 'public', 'todos', 'no'],
+    ['no such publication', { tables: [todos] }, 'other', 'public', 'todos', 'no'],
     ['a listed table', { tables: [todos] }, 'pub', 'public', 'todos', 'yes'],
     [
       'a listed table wins over uncertain',

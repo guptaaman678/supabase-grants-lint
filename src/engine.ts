@@ -9,7 +9,6 @@ import path from 'node:path';
 import { type Config, PACKAGE_JSON_KEY } from './config/defaults.js';
 import { COMMAND_LINE_SOURCE } from './config/load.js';
 import { ConfigError, UsageError } from './errors.js';
-import { DEFAULT_MIGRATIONS, isMigrationsFolder } from './load/discover.js';
 import { hasGlobMagic } from './load/glob.js';
 import { type ProjectFiles, parseProject, resolveProjectFiles } from './lint.js';
 import { loadParser, type MigrationParser } from './parse/adapter.js';
@@ -89,8 +88,6 @@ export function isEngineLoaded(): boolean {
   return parser !== undefined;
 }
 
-const DEFAULTS_SOURCE = 'defaults';
-
 /** Runs `fn`, turning grants-lint's usage errors into `EngineError`s with the same message. */
 function guarded<T>(fn: () => T): T {
   try {
@@ -129,9 +126,9 @@ function resolve(options: ReplayProjectOptions): ProjectFiles {
   );
 }
 
-/** The config source with the highest precedence, ignoring `overrides`. */
-function configSource(project: ProjectFiles): string {
-  return project.configSources.filter((s) => s !== COMMAND_LINE_SOURCE).at(-1) ?? DEFAULTS_SOURCE;
+/** The config source with the highest precedence, ignoring `overrides`; `null` for the defaults. */
+function configLayer(project: ProjectFiles): string | null {
+  return project.configSources.filter((s) => s !== COMMAND_LINE_SOURCE).at(-1) ?? null;
 }
 
 /**
@@ -151,7 +148,7 @@ export function replayProjectSync(options: ReplayProjectOptions): SchemaSnapshot
   const count = (kind: string): number => statements.filter((s) => s.kind === kind).length;
   return toSnapshot(replay.final, {
     engineVersion: version,
-    configSource: configSource(project),
+    configSource: configLayer(project) ?? 'defaults',
     files: loaded.inputs.length,
     since: { value: replay.since.value, source: replay.since.source },
     parseProblems: count('Unparseable'),
@@ -191,18 +188,18 @@ function entryDirs(entry: string, projectDir: string): string[] {
 export function listReplayInputs(options: ReplayProjectOptions): ReplayInputs {
   const project = resolve(options);
   const { projectDir, config } = project;
-  const source = configSource(project);
+  const layer = configLayer(project);
   const pkgSuffix = `#${PACKAGE_JSON_KEY}`;
-  const file = source.endsWith(pkgSuffix) ? source.slice(0, -pkgSuffix.length) : source;
-  const configFile = source === DEFAULTS_SOURCE ? null : path.resolve(projectDir, file);
+  const configFile =
+    layer === null
+      ? null
+      : path.resolve(
+          projectDir,
+          layer.endsWith(pkgSuffix) ? layer.slice(0, -pkgSuffix.length) : layer,
+        );
   const migrations = project.migrations.files.map((file) => file.path);
-  const raw = config.migrations;
-  const entries =
-    raw === DEFAULT_MIGRATIONS && isMigrationsFolder(projectDir)
-      ? ['.']
-      : typeof raw === 'string'
-        ? [raw]
-        : raw;
+  // A project directory that is itself the migrations folder is already watched.
+  const entries = typeof config.migrations === 'string' ? [config.migrations] : config.migrations;
   const watchDirs = new Set([
     projectDir,
     ...entries.flatMap((entry) => entryDirs(entry, projectDir)),
@@ -211,7 +208,7 @@ export function listReplayInputs(options: ReplayProjectOptions): ReplayInputs {
   return {
     projectDir,
     configFile,
-    configSource: source,
+    configSource: layer ?? 'defaults',
     migrations,
     watchDirs: [...watchDirs].sort(),
   };

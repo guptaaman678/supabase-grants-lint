@@ -15,7 +15,7 @@ import {
   replayProjectSync,
   version,
 } from '../../src/engine.js';
-import { ConfigError } from '../../src/errors.js';
+import { ConfigError, UsageError } from '../../src/errors.js';
 import { loadProject } from '../../src/lint.js';
 
 const temp = mkdtempSync(path.join(tmpdir(), 'grants-lint-engine-'));
@@ -81,6 +81,9 @@ describe('loading', () => {
     }
     expect(thrown).toBeInstanceOf(fresh.EngineError);
     expect(thrown).toMatchObject({ code: 'not-loaded', name: 'EngineError' });
+    expect((thrown as Error).message).toBe(
+      'Call and await loadEngine() before replayProjectSync()',
+    );
     await fresh.loadEngine();
     await fresh.loadEngine();
     expect(fresh.isEngineLoaded()).toBe(true);
@@ -391,6 +394,7 @@ describe('errors', () => {
     const noMigrations = capture(() => replayProjectSync({ projectDir: empty }));
     expect(noMigrations.code).toBe('project');
     expect(noMigrations.message).toContain('Migrations directory not found');
+    expect(noMigrations.cause).toBeInstanceOf(UsageError);
   });
 
   it('rethrows anything else unchanged', async () => {
@@ -443,29 +447,51 @@ describe('listReplayInputs', () => {
     const dir = project(
       {},
       {
-        'db/one/1_a.sql': '',
-        'db/two/deep/2_b.sql': '',
+        'db/sql/one/1_a.sql': '',
+        'db/sql/two/deep/2_b.sql': '',
         'extra/3_c.sql': '',
         'single/4_d.sql': '',
         'top.sql': '',
         'grants-lint.config.json': JSON.stringify({
-          migrations: ['db/**/*.sql', 'extra', 'single\\4_d.sql', '*.sql'],
+          migrations: ['db/sql/**/*.sql', 'extra', 'nested\\empty', 'single\\4_d.sql', '*.sql'],
         }),
       },
       'supabase',
     );
+    // A listed directory with no migration yet: a file created there is a new input.
+    mkdirSync(path.join(dir, 'nested', 'empty'), { recursive: true });
     const inputs = listReplayInputs({ projectDir: dir });
     expect(inputs.configFile).toBe(path.join(dir, 'grants-lint.config.json'));
     expect(inputs.migrations).toHaveLength(5);
     expect(inputs.watchDirs).toEqual(
       [
         dir,
-        path.join(dir, 'db'),
-        path.join(dir, 'db', 'one'),
-        path.join(dir, 'db', 'two', 'deep'),
+        path.join(dir, 'db', 'sql'),
+        path.join(dir, 'db', 'sql', 'one'),
+        path.join(dir, 'db', 'sql', 'two', 'deep'),
         path.join(dir, 'extra'),
+        path.join(dir, 'nested', 'empty'),
         path.join(dir, 'single'),
       ].sort(),
     );
+  });
+
+  it('watches a single migrations directory given as a string, even when empty', () => {
+    const dir = project({}, { 'grants-lint.config.json': JSON.stringify({ migrations: 'db/m' }) });
+    mkdirSync(path.join(dir, 'db', 'm'), { recursive: true });
+    expect(listReplayInputs({ projectDir: dir }).watchDirs).toEqual(
+      [dir, path.join(dir, 'db', 'm')].sort(),
+    );
+  });
+
+  it('skips a default migrations folder that does not exist yet (declarative schemas only)', () => {
+    counter += 1;
+    const dir = path.join(temp, `p${String(counter)}`);
+    mkdirSync(path.join(dir, 'supabase', 'schemas'), { recursive: true });
+    writeFileSync(path.join(dir, 'supabase', 'schemas', 'todos.sql'), 'create table t (id int);');
+    expect(listReplayInputs({ projectDir: dir })).toMatchObject({
+      migrations: [],
+      watchDirs: [dir],
+    });
   });
 });
