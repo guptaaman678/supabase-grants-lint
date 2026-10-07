@@ -10,6 +10,8 @@
     "src/replay/**/*.ts",
     "src/rules/**/*.ts",
     "src/fix/**/*.ts",
+    "src/engine.ts",
+    "src/snapshot.ts",
     "src/live/acl-text.ts",
     "src/live/snapshot.ts",
     "src/live/url.ts"

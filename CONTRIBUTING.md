@@ -16,17 +16,17 @@ Node `>=22` is required (`.nvmrc` pins the version used in development).
 
 ## Commands
 
-| Command                           | Purpose                                                                                                            |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `npm run build`                   | build the CLI and library with tsup                                                                                |
-| `npm test`                        | run the vitest suite                                                                                               |
-| `npm run test:watch`              | run tests in watch mode                                                                                            |
-| `npm run lint`                    | ESLint                                                                                                             |
-| `npm run typecheck`               | `tsc --noEmit` in strict mode                                                                                      |
-| `npm run format` / `format:check` | Prettier                                                                                                           |
-| `npm run mutation`                | Stryker mutation testing on `src/model`, `src/replay`, `src/rules`, `src/fix` and live mode's parsing (`src/live`) |
-| `npm run bench`                   | cold-start `check` timings on generated projects of 100 and 500 migrations                                         |
-| `npm run corpus`                  | pinned corpus regression (network: fetches the projects in `test/corpus`)                                          |
+| Command                           | Purpose                                                                                                                               |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run build`                   | build the CLI and library with tsup                                                                                                   |
+| `npm test`                        | run the vitest suite                                                                                                                  |
+| `npm run test:watch`              | run tests in watch mode                                                                                                               |
+| `npm run lint`                    | ESLint                                                                                                                                |
+| `npm run typecheck`               | `tsc --noEmit` in strict mode                                                                                                         |
+| `npm run format` / `format:check` | Prettier                                                                                                                              |
+| `npm run mutation`                | Stryker mutation testing on `src/model`, `src/replay`, `src/rules`, `src/fix`, live mode's parsing (`src/live`) and the engine export |
+| `npm run bench`                   | cold-start `check` timings on generated projects of 100 and 500 migrations                                                            |
+| `npm run corpus`                  | pinned corpus regression (network: fetches the projects in `test/corpus`)                                                             |
 
 ## Fixture layout
 
@@ -201,7 +201,8 @@ outside that are out of scope and are pointed elsewhere:
 ## Mutation testing
 
 `npm run mutation` runs [Stryker](https://stryker-mutator.io/) with the vitest
-runner over `src/model`, `src/replay`, `src/rules` and `src/fix`, using
+runner over `src/model`, `src/replay`, `src/rules`, `src/fix` and the engine
+export (`src/engine.ts`, `src/snapshot.ts`), using
 `vitest.mutation.config.ts` (the in-process unit and golden suites; tests that
 run the built CLI in a child process cannot see a mutant). The run fails below
 a mutation score of 80 (`thresholds.break` in `stryker.config.json`); the
