@@ -7,17 +7,22 @@ import path from 'node:path';
 import type { Config } from './config/defaults.js';
 import { loadConfig } from './config/load.js';
 import { validateConfig } from './config/validate.js';
-import { discoverSchemaFiles, type SchemaPathsSource } from './load/declarative.js';
+import {
+  type DeclarativeDiscovery,
+  discoverSchemaFiles,
+  type SchemaPathsSource,
+} from './load/declarative.js';
 import {
   DEFAULT_MIGRATIONS,
   discoverMigrations,
+  type Discovery,
   type DiscoveryNotice,
   findProjectDir,
   isMigrationsFolder,
   toRelPath,
 } from './load/discover.js';
 import { autoExposeSetting } from './load/supabase-config.js';
-import { loadParser, type ParsedFile } from './parse/adapter.js';
+import { loadParser, type MigrationParser, type ParsedFile } from './parse/adapter.js';
 import type { ReplayInput } from './replay/engine.js';
 import { replayWithWindow, type ResolvedSince, type WindowedReplay } from './replay/since.js';
 import { type Finding, type Notice, replayNotices, runRules } from './rules/index.js';
@@ -139,11 +144,29 @@ export function replayDeclarative(project: DeclarativeProject, config: Config): 
   });
 }
 
+/** `loadProject`'s options, plus config values set by a caller (the engine export's `overrides`). */
+export interface ProjectOptions extends LintOptions {
+  /** Validated like a config file, above every config source; `schemas` wins over its key. */
+  readonly overrides?: Readonly<Record<string, unknown>>;
+}
+
+/** The config and the migration files a project replays: everything before the parser. */
+export interface ProjectFiles {
+  readonly cwd: string;
+  readonly projectDir: string;
+  readonly config: Config;
+  /** The config sources applied, lowest precedence first (`LoadedConfig.sources`). */
+  readonly configSources: readonly string[];
+  readonly cliSince: string | undefined;
+  readonly schemaFiles: DeclarativeDiscovery;
+  readonly migrations: Discovery;
+}
+
 /**
- * Loads the config, discovers the migrations and parses them (`check` and `doctor`). Rejects with
- * a `UsageError` (exit 2) for a bad config or path.
+ * Resolves the project directory, loads the config and discovers the migrations and declarative
+ * schema files, without reading them. Throws a `UsageError` for a bad config or path.
  */
-export async function loadProject(options: LintOptions = {}): Promise<LoadedProject> {
+export function resolveProjectFiles(options: ProjectOptions = {}): ProjectFiles {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const projectDir =
     options.dir === undefined ? findProjectDir(cwd) : path.resolve(cwd, options.dir);
@@ -151,21 +174,43 @@ export async function loadProject(options: LintOptions = {}): Promise<LoadedProj
     options.since === undefined
       ? undefined
       : (validateConfig({ since: options.since }, '--since').since as string);
-  const { config } = loadConfig({
+  const overrides = {
+    ...options.overrides,
+    ...(options.schemas === undefined ? {} : { schemas: [...options.schemas] }),
+  };
+  const { config, sources } = loadConfig({
     cwd,
     projectDir,
     ...(options.configFile === undefined ? {} : { configFile: options.configFile }),
-    ...(options.schemas === undefined ? {} : { overrides: { schemas: [...options.schemas] } }),
+    ...(Object.keys(overrides).length === 0 ? {} : { overrides }),
   });
   const schemaFiles = discoverSchemaFiles({ schemaPaths: config.schemaPaths, projectDir, cwd });
-  const { files, notices: discovery } = discoverMigrations({
+  const migrations = discoverMigrations({
     migrations: config.migrations,
     projectDir,
     cwd,
     allowMissingDefault: schemaFiles.files.length > 0,
   });
+  return { cwd, projectDir, config, configSources: sources, cliSince, schemaFiles, migrations };
+}
 
-  const parser = await loadParser();
+/**
+ * Loads the config, discovers the migrations and parses them (`check` and `doctor`). Rejects with
+ * a `UsageError` (exit 2) for a bad config or path.
+ */
+export async function loadProject(options: ProjectOptions = {}): Promise<LoadedProject> {
+  const files = resolveProjectFiles(options);
+  return parseProject(files, options, await loadParser());
+}
+
+/** `loadProject` once the parser is loaded: synchronous, the same steps in the same order. */
+export function parseProject(
+  project: ProjectFiles,
+  options: LintOptions,
+  parser: MigrationParser,
+): LoadedProject {
+  const { cwd, projectDir, config, cliSince, schemaFiles } = project;
+  const { files, notices: discovery } = project.migrations;
   const parse = (file: { path: string; relPath: string }): ParsedFile =>
     parser.parse(readFileSync(file.path, 'utf8'), file.relPath);
   const parsed = files.map(parse);

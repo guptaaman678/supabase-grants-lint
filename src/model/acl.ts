@@ -140,6 +140,16 @@ export class Acl {
     return holds.some((h) => h !== undefined) && holds.every((h) => h === undefined || !h.object);
   }
 
+  /**
+   * Where the grantee itself (without `PUBLIC`) holds the privilege: `'object'` when on the whole
+   * object (column grants beside it add nothing), `'columns'` when only on some columns.
+   */
+  ownLevel(grantee: Grantee, privilege: string): 'object' | 'columns' | null {
+    const hold = this.#entries.get(grantee)?.get(privilege);
+    if (hold === undefined) return null;
+    return hold.object ? 'object' : 'columns';
+  }
+
   /** The privileges the grantee holds itself (object or column level), sorted. */
   privileges(grantee: Grantee): readonly string[] {
     return [...(this.#entries.get(grantee)?.keys() ?? [])].sort();

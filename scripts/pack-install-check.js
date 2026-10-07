@@ -1,11 +1,12 @@
 // Packaging check (T6.1): packs the built package with `npm pack`, installs the tarball into a
 // throwaway project (not a symlink to `src/` or `dist/`), and runs the installed CLI against the
-// `clean` and `errors` e2e fixtures to confirm exit codes and file allowlist. Needs `dist/`
+// `clean` and `errors` e2e fixtures to confirm exit codes and file allowlist, then imports
+// `supabase-grants-lint/engine` from the installed copy and replays the `errors` fixture. Needs `dist/`
 // (`npm run build` first). Runs on Node 22 and 24 in CI (see `.github/workflows/ci.yml`).
 //
 //   node scripts/pack-install-check.js
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -72,8 +73,34 @@ try {
   }
   if (errorsExit !== 1) fail(`errors fixture: expected exit 1, got ${errorsExit}`);
 
+  // The engine export resolves through `exports["./engine"]`, with its types, and replays.
+  const types = path.join(tmp, 'node_modules', 'supabase-grants-lint', 'dist', 'engine.d.ts');
+  if (!existsSync(types)) fail(`engine types not found at ${types}`);
+  const probe = path.join(tmp, 'engine-probe.mjs');
+  writeFileSync(
+    probe,
+    [
+      "import { replayProject, version } from 'supabase-grants-lint/engine';",
+      'const snapshot = await replayProject({ projectDir: process.argv[2] });',
+      'console.log(JSON.stringify({ version, snapshotVersion: snapshot.snapshotVersion,',
+      '  relations: snapshot.relations.length, files: snapshot.meta.files }));',
+    ].join('\n'),
+  );
+  const engineOut = JSON.parse(execFileSync('node', [probe, errors], { encoding: 'utf8' }));
+  const pkgVersion = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  if (
+    engineOut.version !== pkgVersion ||
+    engineOut.snapshotVersion !== 1 ||
+    engineOut.relations < 1 ||
+    engineOut.files < 1
+  ) {
+    fail(`engine export: unexpected snapshot summary ${JSON.stringify(engineOut)}`);
+  }
+
   process.stdout.write(
-    `PASS: tarball allowlisted, installed, clean fixture 0/0, errors fixture exit 1 (node ${process.version})\n`,
+    `PASS: tarball allowlisted, installed, clean fixture 0/0, errors fixture exit 1, ` +
+      `engine export replayed ${engineOut.relations} relations from ${engineOut.files} files ` +
+      `(node ${process.version})\n`,
   );
 } finally {
   rmSync(tmp, { recursive: true, force: true });
