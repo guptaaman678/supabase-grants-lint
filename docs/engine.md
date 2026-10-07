@@ -26,11 +26,7 @@ The package is ESM only. Loading the SQL parser (WebAssembly) is the only asynch
 await `loadEngine()` once, then replay synchronously as often as you need:
 
 ```ts
-import {
-  loadEngine,
-  publicationMembership,
-  replayProjectSync,
-} from 'supabase-grants-lint/engine';
+import { loadEngine, publicationMembership, replayProjectSync } from 'supabase-grants-lint/engine';
 
 await loadEngine();
 
@@ -47,15 +43,15 @@ console.log(publicationMembership(snapshot, 'supabase_realtime', 'public', 'todo
 
 ## Functions
 
-| Function                                              | Returns                        | Notes                                                                                   |
-| ----------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
-| `loadEngine()`                                        | `Promise<void>`                | Loads the parser once; calling it again is free.                                        |
-| `isEngineLoaded()`                                    | `boolean`                      | Whether `loadEngine()` has resolved.                                                    |
-| `replayProjectSync(options)`                          | `SchemaSnapshot`               | Throws `EngineError` `not-loaded` before `loadEngine()` resolves.                       |
-| `replayProject(options)`                              | `Promise<SchemaSnapshot>`      | `await loadEngine()`, then `replayProjectSync(options)`.                                |
-| `listReplayInputs(options)`                           | `ReplayInputs`                 | The files a replay reads, without the parser: for a cache to watch.                     |
-| `publicationMembership(snapshot, pub, schema, name)`  | `'yes'` \| `'no'` \| `'unknown'` | Whether a table is in a publication, from the snapshot alone.                         |
-| `version`                                             | `string`                       | This package's version (also in `snapshot.meta.engineVersion`).                         |
+| Function                                             | Returns                          | Notes                                                               |
+| ---------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------- |
+| `loadEngine()`                                       | `Promise<void>`                  | Loads the parser once; calling it again is free.                    |
+| `isEngineLoaded()`                                   | `boolean`                        | Whether `loadEngine()` has resolved.                                |
+| `replayProjectSync(options)`                         | `SchemaSnapshot`                 | Throws `EngineError` `not-loaded` before `loadEngine()` resolves.   |
+| `replayProject(options)`                             | `Promise<SchemaSnapshot>`        | `await loadEngine()`, then `replayProjectSync(options)`.            |
+| `listReplayInputs(options)`                          | `ReplayInputs`                   | The files a replay reads, without the parser: for a cache to watch. |
+| `publicationMembership(snapshot, pub, schema, name)` | `'yes'` \| `'no'` \| `'unknown'` | Whether a table is in a publication, from the snapshot alone.       |
+| `version`                                            | `string`                         | This package's version (also in `snapshot.meta.engineVersion`).     |
 
 ## Options
 
@@ -280,9 +276,9 @@ policies, see [how-it-works.md](how-it-works.md)), the replay tracks for the eng
   `public.rls_auto_enable()`. While it is active, a new table in `public` starts with RLS on
   (`source: 'auto-rls'`); a later explicit `disable` wins. When it counts as active is the config key
   [`autoRls`](configuration.md#autorls). Event triggers are tracked by `create`, `alter ... enable |
-  disable`, `rename` and `drop`; their bodies are not read.
+disable`, `rename` and `drop`; their bodies are not read.
 - **Publications:** `create publication` (a list of tables, `for all tables`, `for tables in
-  schema`), `alter publication ... add | drop | set` (tables, `table only`, `tables in schema`),
+schema`), `alter publication ... add | drop | set` (tables, `table only`, `tables in schema`),
   `rename to` and `drop publication`. `owner to` and `set (publish ...)` change nothing. A
   `create publication` of an existing name redefines it and leaves a note. A dropped table leaves
   every publication; a renamed table keeps its membership. The publications in the config key
@@ -306,7 +302,7 @@ policies, see [how-it-works.md](how-it-works.md)), the replay tracks for the eng
 - Any statement inside a `DO` block apart from the publication scan.
 - Non-event triggers; `alter table` subcommands other than the four RLS ones; ownership changes;
   role creation and membership; `security_invoker` and `security_barrier` views; `drop schema ...
-  cascade`.
+cascade`.
 - Publication `publish` options, row filters and column lists (membership only).
 - `select ... into` creates no tracked relation, so automatic RLS cannot apply to it.
 - Partition inheritance of RLS: partitions start with RLS off, as in Postgres.

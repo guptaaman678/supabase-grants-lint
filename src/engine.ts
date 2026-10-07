@@ -171,7 +171,12 @@ function entryDirs(entry: string, projectDir: string): string[] {
   const normalized = entry.replaceAll('\\', '/');
   if (hasGlobMagic(normalized)) {
     const segments = normalized.split('/');
-    const fixed = segments.slice(0, segments.findIndex((s) => hasGlobMagic(s))).join('/');
+    const fixed = segments
+      .slice(
+        0,
+        segments.findIndex((s) => hasGlobMagic(s)),
+      )
+      .join('/');
     return [path.resolve(projectDir, fixed || '.')];
   }
   const abs = path.resolve(projectDir, normalized);

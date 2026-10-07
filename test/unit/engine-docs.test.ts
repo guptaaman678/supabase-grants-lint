@@ -30,7 +30,9 @@ function diagnostics(files: Record<string, string>): string[] {
     return file;
   });
   // The repo's own compiler options, so `src/` type-checks as `npm run typecheck` checks it.
-  const { config } = ts.readConfigFile(path.join(root, 'tsconfig.json'), ts.sys.readFile) as {
+  const { config } = ts.readConfigFile(path.join(root, 'tsconfig.json'), (file) =>
+    ts.sys.readFile(file),
+  ) as {
     config: unknown;
   };
   const { options } = ts.parseJsonConfigFileContent(config, ts.sys, root);

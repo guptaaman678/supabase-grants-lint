@@ -173,10 +173,12 @@ function relationPrivileges(acl: Acl): SnapshotRelation['privileges'] {
     grantees(acl).map(([written, g]) => [
       written,
       Object.fromEntries(
-        acl.privileges(g).map((privilege) => [
-          privilege,
-          acl.ownLevel(g, privilege) === 'object' ? 'table' : 'columns',
-        ]),
+        acl
+          .privileges(g)
+          .map((privilege) => [
+            privilege,
+            acl.ownLevel(g, privilege) === 'object' ? 'table' : 'columns',
+          ]),
       ),
     ]),
   );
@@ -288,13 +290,8 @@ export function publicationMembership(
   if (found === undefined) return 'no';
   const same = (t: SnapshotName): boolean => t.schema === schema && t.name === name;
   const isTable = (): boolean =>
-    snapshot.relations.some((r) => same(r) && r.kind === 'table') ||
-    !snapshot.relations.some(same);
-  if (
-    found.tables.some(same) ||
-    (found.allTables && isTable()) ||
-    found.schemas.includes(schema)
-  ) {
+    snapshot.relations.some((r) => same(r) && r.kind === 'table') || !snapshot.relations.some(same);
+  if (found.tables.some(same) || (found.allTables && isTable()) || found.schemas.includes(schema)) {
     return 'yes';
   }
   if (found.excluded.some(same)) return 'no';

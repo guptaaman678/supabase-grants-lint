@@ -46,6 +46,43 @@ describe('toSnapshot', () => {
     });
   });
 
+  it('sorts publications, their schemas and tables by schema then name', () => {
+    const catalog = Catalog.create(undefined, 'auto', ['zeta']).putPublication({
+      name: 'alpha',
+      origin: 'migration',
+      allTables: false,
+      schemas: ['public', 'private'],
+      tables: [
+        { schema: 'public', name: 'todos' },
+        { schema: 'private', name: 'scores' },
+        { schema: 'public', name: 'orders' },
+      ],
+      uncertain: at,
+      excluded: [
+        { schema: 'public', name: 'b' },
+        { schema: 'public', name: 'a' },
+      ],
+    });
+    const [alpha, zeta] = toSnapshot(catalog, META).publications;
+    expect(zeta?.name).toBe('zeta');
+    expect(alpha).toEqual({
+      name: 'alpha',
+      origin: 'migration',
+      allTables: false,
+      schemas: ['private', 'public'],
+      tables: [
+        { schema: 'private', name: 'scores' },
+        { schema: 'public', name: 'orders' },
+        { schema: 'public', name: 'todos' },
+      ],
+      uncertain: at,
+      excluded: [
+        { schema: 'public', name: 'a' },
+        { schema: 'public', name: 'b' },
+      ],
+    });
+  });
+
   it('sorts grantees and keeps object over column grants', () => {
     const acl = Acl.EMPTY.grant(['b', PUBLIC, 'a'], ['select'])
       .grant(['a'], [{ name: 'update', columns: ['x'] }])
@@ -64,7 +101,7 @@ describe('toSnapshot', () => {
 });
 
 describe('Acl.ownLevel', () => {
-  it('reports the grantee’s own level, without PUBLIC', () => {
+  it("reports the grantee's own level, without PUBLIC", () => {
     const acl = Acl.EMPTY.grant([PUBLIC], ['select']).grant(
       ['anon'],
       [{ name: 'update', columns: ['x'] }],
@@ -121,16 +158,51 @@ describe('publicationMembership', () => {
   it.each([
     ['no such publication', {}, 'other', 'public', 'todos', 'no'],
     ['a listed table', { tables: [todos] }, 'pub', 'public', 'todos', 'yes'],
-    ['a listed table wins over uncertain', { tables: [todos], uncertain: at }, 'pub', 'public', 'todos', 'yes'],
+    [
+      'a listed table wins over uncertain',
+      { tables: [todos], uncertain: at },
+      'pub',
+      'public',
+      'todos',
+      'yes',
+    ],
     ['all tables, a table', { allTables: true }, 'pub', 'public', 'todos', 'yes'],
     ['all tables, a view', { allTables: true }, 'pub', 'public', 'open_todos', 'no'],
-    ['all tables, a relation the replay never saw', { allTables: true }, 'pub', 'public', 'x', 'yes'],
+    [
+      'all tables, a relation the replay never saw',
+      { allTables: true },
+      'pub',
+      'public',
+      'x',
+      'yes',
+    ],
     ['a listed schema', { schemas: ['public'] }, 'pub', 'public', 'todos', 'yes'],
     ['another schema', { schemas: ['private'] }, 'pub', 'public', 'todos', 'no'],
-    ['excluded after the mark', { uncertain: at, excluded: [todos] }, 'pub', 'public', 'todos', 'no'],
-    ['excluded in another schema', { uncertain: at, excluded: [{ schema: 'x', name: 'todos' }] }, 'pub', 'public', 'todos', 'unknown'],
+    [
+      'excluded after the mark',
+      { uncertain: at, excluded: [todos] },
+      'pub',
+      'public',
+      'todos',
+      'no',
+    ],
+    [
+      'excluded in another schema',
+      { uncertain: at, excluded: [{ schema: 'x', name: 'todos' }] },
+      'pub',
+      'public',
+      'todos',
+      'unknown',
+    ],
     ['uncertain', { uncertain: at }, 'pub', 'public', 'todos', 'unknown'],
-    ['a listed table of the same name in another schema', { tables: [{ schema: 'private', name: 'todos' }] }, 'pub', 'public', 'todos', 'no'],
+    [
+      'a listed table of the same name in another schema',
+      { tables: [{ schema: 'private', name: 'todos' }] },
+      'pub',
+      'public',
+      'todos',
+      'no',
+    ],
     ['not listed', {}, 'pub', 'public', 'todos', 'no'],
   ] as const)('%s', (_label, publication, pub, schema, name, expected) => {
     expect(publicationMembership(snapshotWith(publication), pub, schema, name)).toBe(expected);
