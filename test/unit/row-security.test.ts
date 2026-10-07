@@ -120,6 +120,21 @@ describe('parse: event triggers', () => {
     });
   });
 
+  it('keeps only TAG filters (Postgres rejects any other filter variable when it runs)', () => {
+    expect(
+      one(
+        `create event trigger e on ddl_command_end when tag in ('CREATE TABLE') and other in ('x') execute function f();`,
+        'EventTrigger',
+      ),
+    ).toMatchObject({ tags: ['CREATE TABLE'] });
+    expect(
+      one(
+        `create event trigger e on ddl_command_end when other in ('x') execute function f();`,
+        'EventTrigger',
+      ),
+    ).toMatchObject({ tags: [] });
+  });
+
   it.each([
     ['enable', 'O'],
     ['enable replica', 'R'],
@@ -379,6 +394,15 @@ describe('replay: automatic RLS (ensure_rls)', () => {
     ]);
     expect(rls(result.final, 'public.todos')).toEqual(OFF);
   });
+
+  it('renames a trigger onto a free name', () => {
+    const result = run([
+      `create event trigger audit on ddl_command_end execute function public.rls_auto_enable();
+       alter event trigger audit rename to rls_guard;`,
+    ]);
+    expect(result.final.eventTriggers().map((t) => t.name)).toEqual(['rls_guard']);
+    expect(result.final.eventTrigger('audit')).toBeUndefined();
+  });
 });
 
 describe('replay: autoRls modes', () => {
@@ -459,6 +483,25 @@ describe('replay: autoRls modes', () => {
        drop function public.rls_auto_enable();`,
     ]);
     expect(result.final.eventTriggers().map((t) => t.name)).toEqual(['ensure_rls']);
+  });
+
+  it('keeps the triggers of a same-named function in another schema on CASCADE', () => {
+    const result = run([
+      `create event trigger audit on ddl_command_end execute function public.audit();
+       drop function private.audit() cascade;`,
+    ]);
+    expect(result.final.eventTriggers().map((t) => t.name)).toEqual(['audit']);
+  });
+
+  it('keeps the rls_auto_enable fingerprint when another function is dropped', () => {
+    const result = run([
+      `${AUTO_RLS_FUNCTION}
+       create function public.audit() returns void language sql as $$ select $$;
+       drop function public.audit();
+       create table public.todos (id int);`,
+    ]);
+    expect(rls(result.final, 'public.todos').source).toBe('auto-rls');
+    expect(result.final.autoRls()).not.toBeNull();
   });
 });
 

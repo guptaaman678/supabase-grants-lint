@@ -202,6 +202,8 @@ describe('publicationMentions', () => {
     ['ALTER  PUBLICATION\n  Supabase_Realtime ADD TABLE x', [REALTIME]],
     ['alter publication "My ""Pub""" add table x', ['My "Pub"']],
     ['drop publication if exists a, "B" , c;', ['a', 'B', 'c']],
+    ['drop publication if  exists  a,  b;', ['a', 'b']],
+    ['drop publication p', ['p']],
     ['create publication p for all tables', ['p']],
     [`execute 'drop publication old_pub';`, ['old_pub']],
     ['alter publication p add table a; alter publication p drop table b;', ['p']],
@@ -210,6 +212,8 @@ describe('publicationMentions', () => {
     [`execute 'alter publication pub_' || suffix;`, ['*']],
     [`execute format('alter publication pub_%s add table x', n);`, ['*']],
     ["execute 'alter publication '|| p;", ['*']],
+    ["execute 'alter publication pub_'||suffix;", ['*']],
+    ['alter publication 1 a;', ['*']],
     ['create table publications (id int); select 1;', []],
     ['grant select on table x to anon', []],
   ])('%j -> %j', (body, expected) => {
@@ -242,6 +246,25 @@ describe('publicationMentions', () => {
       one('create function f() returns int language sql return 1;', 'FunctionDefinition')
         .publicationMentions,
     ).toEqual([]);
+    expect(
+      one('create function f() returns int return 1;', 'FunctionDefinition').publicationMentions,
+    ).toEqual([]);
+  });
+
+  it('scans only the AS strings of a function, one per line', () => {
+    // A verb at the very end names nothing; the LANGUAGE option is not part of the body.
+    expect(
+      one(
+        `create function f() returns void as 'alter publication' language plpgsql;`,
+        'FunctionDefinition',
+      ).publicationMentions,
+    ).toEqual([]);
+    expect(
+      one(
+        `create function f() returns int language c as 'alter publication', 'p';`,
+        'FunctionDefinition',
+      ).publicationMentions,
+    ).toEqual(['p']);
   });
 });
 
@@ -317,6 +340,20 @@ describe('replay: publication membership', () => {
     expect(names(pub(result.final, 'p').tables)).toEqual(['public.messages']);
   });
 
+  it('adds to the current tables, and drops several tables at once', () => {
+    const result = run([
+      `alter publication supabase_realtime add table todos;
+       alter publication supabase_realtime add table orders, messages;`,
+      'alter publication supabase_realtime drop table todos, messages;',
+    ]);
+    expect(names(pub(fileOf(result, 1).after, REALTIME).tables)).toEqual([
+      'public.todos',
+      'public.orders',
+      'public.messages',
+    ]);
+    expect(names(pub(result.final, REALTIME).tables)).toEqual(['public.orders']);
+  });
+
   it('treats OWNER TO and SET (publish ...) as no-ops on a known publication', () => {
     const before = run(['alter publication supabase_realtime add table todos;']);
     const after = run([
@@ -339,6 +376,16 @@ describe('replay: publication membership', () => {
     expect(pub(result.final, REALTIME).excluded).toEqual([]);
   });
 
+  it('keeps the other members when a table is dropped', () => {
+    const result = run([
+      `create table todos (id int);
+       create table orders (id int);
+       alter publication supabase_realtime add table todos, orders;`,
+      'drop table todos;',
+    ]);
+    expect(names(pub(result.final, REALTIME).tables)).toEqual(['public.orders']);
+  });
+
   it('keeps a renamed table, or one moved to another schema, in its publications', () => {
     const result = run([
       `create table todos (id int);
@@ -357,6 +404,20 @@ describe('replay: publication membership', () => {
       'alter table untouched rename to other;',
     ]);
     expect(names(pub(result.final, REALTIME).tables)).toEqual(['public.scores']);
+  });
+
+  it('renames such a table when only one of several publications lists it, among other tables', () => {
+    const result = run([
+      'create publication p for table todos, orders;',
+      'alter table orders rename to scores;',
+    ]);
+    expect(names(pub(result.final, 'p').tables)).toEqual(['public.todos', 'public.scores']);
+    expect(pub(result.final, REALTIME).tables).toEqual([]);
+    const only = run(
+      ['create publication p for table todos, orders;', 'alter table orders rename to scores;'],
+      [],
+    );
+    expect(names(pub(only.final, 'p').tables)).toEqual(['public.todos', 'public.scores']);
   });
 
   it('reads DROP PUBLICATION IF EXISTS then CREATE PUBLICATION as a fresh definition', () => {
@@ -408,7 +469,10 @@ create publication supabase_realtime for table messages;`,
     ]);
     expect(pub(result.final, 'custom')).toMatchObject({
       origin: 'unseen',
+      allTables: false,
+      schemas: [],
       uncertain: at(1, 1),
+      excluded: [],
     });
     expect(names(pub(result.final, 'custom').tables)).toEqual(['public.todos']);
     expect(pub(result.final, 'owned')).toMatchObject({ origin: 'unseen', uncertain: at(2, 1) });
@@ -507,6 +571,24 @@ describe('replay: publications changed by DO blocks and functions (ADR-015)', ()
     expect(names(pub(result.final, REALTIME).excluded)).toEqual(['public.messages']);
   });
 
+  it('keeps the earlier exclusions when another table is dropped after the seed', () => {
+    const result = run([
+      SEED,
+      'alter publication supabase_realtime drop table orders;',
+      'drop table if exists todos;',
+    ]);
+    expect(names(pub(result.final, REALTIME).excluded)).toEqual(['public.orders', 'public.todos']);
+    const statements = run([
+      SEED,
+      'alter publication supabase_realtime drop table orders;',
+      'alter publication supabase_realtime drop table todos;',
+    ]);
+    expect(names(pub(statements.final, REALTIME).excluded)).toEqual([
+      'public.orders',
+      'public.todos',
+    ]);
+  });
+
   it('renames an excluded table with the table', () => {
     const result = run([
       SEED,
@@ -590,6 +672,20 @@ end $$;`;
        do $$ begin perform reseed(); end $$;`,
     ]);
     expect(pub(result.final, REALTIME).uncertain).toBeNull();
+    expect(result.final.publications().map((p) => p.name)).toEqual([REALTIME]);
+  });
+
+  it('matches a called name case-insensitively, and literally', () => {
+    const upper = run([
+      `create function public.seed() returns void language plpgsql as $$ begin alter publication supabase_realtime add table x; end $$;`,
+      `do $$ begin perform Public.SEED(); end $$;`,
+    ]);
+    expect(pub(upper.final, REALTIME).uncertain).toEqual(at(2, 1));
+    const dollar = run([
+      `create function public.seed$x() returns void language plpgsql as $$ begin alter publication supabase_realtime add table x; end $$;`,
+      `do $$ begin perform seed$x(); end $$;`,
+    ]);
+    expect(pub(dollar.final, REALTIME).uncertain).toEqual(at(2, 1));
   });
 
   it('forgets a function replaced without mentions, or dropped', () => {
