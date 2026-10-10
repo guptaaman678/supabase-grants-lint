@@ -153,13 +153,9 @@ describe('snapshot', () => {
       ],
     });
     expect(audit?.rls).toEqual({ enabled: false, forced: false, source: 'default', at: null });
-    // The rls_auto_enable function was defined before `orders` (autoRls "auto").
-    expect(orders?.rls).toEqual({
-      enabled: true,
-      forced: false,
-      source: 'auto-rls',
-      at: { file: 'supabase/migrations/20261001000002_realtime.sql', line: 5, column: 1 },
-    });
+    // The rls_auto_enable function counts from the next file (autoRls "auto"), not for `orders`
+    // in the same file: a dump writes ENABLE ROW LEVEL SECURITY for its own tables.
+    expect(orders?.rls).toEqual({ enabled: false, forced: false, source: 'default', at: null });
   });
 
   it('records sequences with their owner and privileges', async () => {
@@ -300,9 +296,21 @@ grant usage, select on sequence public.counter to authenticated, public;`,
 
 describe('config and overrides', () => {
   const sql = {
-    '1_a.sql': `create or replace function public.rls_auto_enable() returns event_trigger language plpgsql as $$ begin end $$;
-create table public.todos (id int);`,
+    '1_a.sql': `create or replace function public.rls_auto_enable() returns event_trigger language plpgsql as $$ begin end $$;`,
+    '2_b.sql': 'create table public.todos (id int);',
   };
+
+  it('starts RLS on for a table of a later file under the default autoRls "auto"', async () => {
+    await loadEngine();
+    const snapshot = replayProjectSync({ projectDir: project(sql) });
+    expect(snapshot.meta.autoRls.mode).toBe('auto');
+    expect(snapshot.relations[0]?.rls).toEqual({
+      enabled: true,
+      forced: false,
+      source: 'auto-rls',
+      at: { file: 'supabase/migrations/1_a.sql', line: 1, column: 1 },
+    });
+  });
 
   it('reads autoRls and platformPublications from grants-lint.config.json', async () => {
     await loadEngine();

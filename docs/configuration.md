@@ -132,8 +132,10 @@ says when the replay assumes it.
 
 - `"auto"`: while an enabled event trigger named `ensure_rls`, or calling a function named
   `rls_auto_enable`, on `ddl_command_end` for `CREATE TABLE` exists in the replayed migrations; and
-  from a migration that defines `public.rls_auto_enable()` returning `event_trigger` until it is
-  dropped, because a pulled baseline keeps that function but not the trigger.
+  from the migration after the one that defines `public.rls_auto_enable()` returning
+  `event_trigger` until it is dropped, because a pulled baseline keeps that function but not the
+  trigger. Tables in the file that defines the function keep the state their own statements give:
+  a `db pull` dump writes `enable row level security` for every table that had it on.
 - `"on"`: from the first migration.
 - `"off"`: only explicit `alter table ... enable row level security` statements count.
 
