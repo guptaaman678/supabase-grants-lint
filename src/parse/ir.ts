@@ -304,13 +304,23 @@ export type Publication = Base & { readonly kind: 'Publication' } & (
     | { readonly action: 'noop'; readonly name: string; readonly change: 'owner' | 'options' }
   );
 
-/** Keywords that make a `DO` body worth a PARSE002 notice (spec §6.1). */
+/** `DO` body keywords for statements that drop, alter or rename a relation (ADR-019 item 3). */
+export const RELATION_CHANGE_KEYWORDS = [
+  'drop table',
+  'drop view',
+  'drop materialized view',
+  'alter table',
+  'rename',
+] as const;
+
+/** Keywords that make a `DO` body worth a PARSE002 notice (spec §6.1, ADR-019 item 3). */
 export const DYNAMIC_SQL_KEYWORDS = [
   'grant',
   'revoke',
   'create table',
   'create policy',
   'default privileges',
+  ...RELATION_CHANGE_KEYWORDS,
 ] as const;
 export type DynamicSqlKeyword = (typeof DYNAMIC_SQL_KEYWORDS)[number];
 

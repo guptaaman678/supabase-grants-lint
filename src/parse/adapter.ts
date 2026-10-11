@@ -383,6 +383,15 @@ const KEYWORD_PATTERNS: Record<DynamicSqlKeyword, RegExp> = {
   'create table': /\bcreate\s+(?:(?:global|local|temp|temporary|unlogged)\s+)*table\b/i,
   'create policy': /\bcreate\s+policy\b/i,
   'default privileges': /\bdefault\s+privileges\b/i,
+  // Not `alter publication <name> drop table`, which only changes realtime membership.
+  'drop table':
+    /(?<!\bpublication\s+(?:"(?:[^"]|"")+"|[\w$.]+)\s+)\bdrop\s+(?:foreign\s+)?table\b/i,
+  'drop view': /\bdrop\s+view\b/i,
+  'drop materialized view': /\bdrop\s+materialized\s+view\b/i,
+  'alter table': /\balter\s+(?:foreign\s+)?table\b/i,
+  // A relation rename (`rename to`), not a column, constraint, policy or function rename.
+  rename:
+    /\balter\s+(?:(?:foreign\s+)?table|(?:materialized\s+)?view|sequence)\b[^;]*?\brename\s+to\b/i,
 };
 
 export function dynamicSqlMentions(body: string): DynamicSqlKeyword[] {

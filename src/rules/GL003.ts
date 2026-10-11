@@ -14,7 +14,7 @@ import { grantSql, quoteIdent } from '../fix/sql.js';
 import type { SourceLocation } from '../parse/ir.js';
 import { qualified } from '../replay/context.js';
 import type { FileReplay } from '../replay/engine.js';
-import { isCheckedPolicyRole, rolesBehind } from './client-roles.js';
+import { isCheckedPolicyRole, rolesBehind, rolesToGrant } from './client-roles.js';
 import type { Rule, RuleContext, RuleFinding } from './types.js';
 
 /** The privileges that let a role use the policy: its command, or any DML privilege for `ALL`. */
@@ -65,14 +65,18 @@ function deadPolicy(policy: Policy, role: Grantee, file: FileReplay): RuleFindin
     role === PUBLIC
       ? `PUBLIC, but neither anon nor authenticated holds any ${privilege} privilege on it`
       : `${role}, but ${role} holds no ${privilege} privilege on it`;
-  const grantees = rolesBehind(role);
+  const grantees = rolesToGrant(role);
+  const grant =
+    role === PUBLIC
+      ? 'Grant authenticated the privilege in the same migration (and anon as well only if ' +
+        'signed-out visitors should pass the policy), or drop the policy.'
+      : `Grant ${role} the privilege in the same migration, or drop the policy.`;
   return {
     at: anchor(policy, file),
     message:
       `Policy ${quoteIdent(policy.name)} on ${qualified(policy.relation)} is for ` +
       `${all ? 'every command' : policy.command} by ${holder}: Postgres checks privileges before ` +
-      'RLS, so the policy never applies and those requests fail with 42501 permission denied. ' +
-      `Grant ${grantees.join(' and ')} the privilege in the same migration, or drop the policy.`,
+      `RLS, so the policy never applies and those requests fail with 42501 permission denied. ${grant}`,
     relation: policy.relation,
     role,
     ...(all ? {} : { privilege: policy.command }),

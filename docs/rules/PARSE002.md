@@ -5,9 +5,12 @@ Default severity: **info**.
 ## What it catches
 
 A `DO` block whose body mentions `grant`, `revoke`, `create table`, `create policy` or
-`default privileges`. The replay does not run PL/pgSQL, so whatever the block does to relations,
-grants or policies is not modelled. PARSE002 checks every file, enforced or not. Function bodies
-are not reported: creating a function runs nothing.
+`default privileges`, or drops, alters or renames a relation (`drop table`, `drop view`,
+`drop materialized view`, `alter table`, or a rename of a table, view or sequence). The replay does
+not run PL/pgSQL, so whatever the block does to relations, grants or policies is not modelled: a
+table the block drops is still in the replay, and the tool may ask for grants on it.
+`alter publication ... drop table` (realtime membership) is not reported. PARSE002 checks every
+file, enforced or not. Function bodies are not reported: creating a function runs nothing.
 
 ## Why it matters
 

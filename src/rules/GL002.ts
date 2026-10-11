@@ -10,7 +10,7 @@ import { admitsNoClient, type Policy } from '../model/relations.js';
 import { grantSql } from '../fix/sql.js';
 import { qualified } from '../replay/context.js';
 import type { CreatedRelation } from '../replay/engine.js';
-import { isCheckedPolicyRole, rolesBehind } from './client-roles.js';
+import { isCheckedPolicyRole, rolesBehind, rolesToGrant } from './client-roles.js';
 import type { Rule, RuleFinding } from './types.js';
 
 /** The privileges the policies cover, in `DML_PRIVILEGES` order (`ALL` covers all four). */
@@ -27,13 +27,14 @@ function finding(
   policies: readonly Policy[],
 ): RuleFinding {
   const name = qualified(relation);
-  const grantees = rolesBehind(role);
+  const grantees = rolesToGrant(role);
   const message =
     role === PUBLIC
       ? `${name} has RLS policies for PUBLIC, but neither anon nor authenticated holds a select, ` +
         'insert, update or delete privilege on it: every Data API request fails with 42501 ' +
-        'permission denied before any policy runs. Grant anon and authenticated the commands ' +
-        'its policies cover in the same migration.'
+        'permission denied before any policy runs. Grant authenticated the commands its ' +
+        'policies cover in the same migration, and anon as well only if signed-out visitors ' +
+        'should pass the policies.'
       : `${name} has RLS policies for ${role}, but ${role} holds no select, insert, update or ` +
         `delete privilege on it: every Data API request as ${role} fails with 42501 permission ` +
         `denied before any policy runs. Grant ${role} the commands its policies cover in the ` +

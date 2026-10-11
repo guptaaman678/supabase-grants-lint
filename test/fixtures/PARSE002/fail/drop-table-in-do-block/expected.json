@@ -1,0 +1,11 @@
+{
+  "findings": [
+    {
+      "rule": "PARSE002",
+      "severity": "info",
+      "file": "migrations/20261001000000_drop_messages.sql",
+      "line": 3,
+      "column": 1
+    }
+  ]
+}

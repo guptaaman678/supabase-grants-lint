@@ -738,6 +738,24 @@ describe('DO blocks', () => {
     ['alter default\tprivileges', ['default privileges']],
     ['granted, revoked, create tables, policy', []],
     ['perform 1', []],
+    // ADR-019 item 3: statements that drop, alter or rename a relation.
+    ['drop table if exists public.x', ['drop table']],
+    ['DROP FOREIGN\n TABLE x', ['drop table']],
+    ['drop view v', ['drop view']],
+    ['drop materialized  view m', ['drop materialized view']],
+    ['alter table t add column c int', ['alter table']],
+    ['alter table t rename to u', ['alter table', 'rename']],
+    ['alter view v rename to w', ['rename']],
+    ['alter materialized view m rename to n', ['rename']],
+    ['ALTER SEQUENCE s RENAME TO t', ['rename']],
+    ['drop policy p on t; drop function f(); dropped tables, renamed, altered table', []],
+    ['alter policy p on t rename to q; alter function f() rename to g', []],
+    ['alter table t rename column a to b', ['alter table']],
+    ['alter table if exists t rename constraint c to d', ['alter table']],
+    ['alter publication supabase_realtime drop table todos', []],
+    ['ALTER PUBLICATION "my pub" DROP TABLE a', []],
+    ["execute format('alter publication supabase_realtime drop table %I', t)", []],
+    ['alter publication p add table a; drop table b', ['drop table']],
   ])('dynamicSqlMentions(%j)', (body, expected) => {
     expect(dynamicSqlMentions(body)).toEqual(expected);
   });

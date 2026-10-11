@@ -5,7 +5,7 @@ import { PUBLIC } from '../../src/model/acl.js';
 import { loadParser, type MigrationParser } from '../../src/parse/adapter.js';
 import { sarifRules } from '../../src/report/sarif.js';
 import { replayWithWindow } from '../../src/replay/since.js';
-import { API_CLIENT_ROLES, rolesBehind } from '../../src/rules/client-roles.js';
+import { API_CLIENT_ROLES, rolesBehind, rolesToGrant } from '../../src/rules/client-roles.js';
 import { GL002 } from '../../src/rules/GL002.js';
 import { docsUrl, type Finding, RULES, runRules } from '../../src/rules/index.js';
 
@@ -66,18 +66,26 @@ describe('GL002 unreachable-new-relation', () => {
     expect(findings[0]?.message).not.toContain(String.fromCodePoint(0x2014)); // G7
   });
 
-  it('treats a policy without TO as PUBLIC and fixes it for anon and authenticated', () => {
+  it('treats a policy without TO as PUBLIC and fixes it for authenticated only (ADR-019)', () => {
     const findings = lint(
       `${TODOS}\ncreate policy "anyone reads" on public.todos for select using (true);`,
     );
     expect(findings.map((f) => f.role)).toEqual(['PUBLIC']);
-    expect(findings[0]?.fix).toBe('grant select on public.todos to anon, authenticated;');
+    expect(findings[0]?.fix).toBe('grant select on public.todos to authenticated;');
     expect(findings[0]?.message).toBe(
       'public.todos has RLS policies for PUBLIC, but neither anon nor authenticated holds a ' +
         'select, insert, update or delete privilege on it: every Data API request fails with ' +
-        '42501 permission denied before any policy runs. Grant anon and authenticated the ' +
-        'commands its policies cover in the same migration.',
+        '42501 permission denied before any policy runs. Grant authenticated the commands its ' +
+        'policies cover in the same migration, and anon as well only if signed-out visitors ' +
+        'should pass the policies.',
     );
+  });
+
+  it('clears a PUBLIC finding with its own fix, which grants nothing to anon', () => {
+    const sql = `${TODOS}\ncreate policy "anyone reads" on public.todos for select using (true);`;
+    const [finding] = lint(sql);
+    expect(finding?.fix).not.toMatch(/\banon\b/);
+    expect(lint(`${sql}\n${finding?.fix ?? ''}`)).toEqual([]);
   });
 
   it('passes a PUBLIC policy when either anon or authenticated holds a DML privilege', () => {
@@ -269,6 +277,12 @@ describe('client roles', () => {
     expect(API_CLIENT_ROLES).toEqual(['anon', 'authenticated']);
     expect(rolesBehind(PUBLIC)).toEqual(['anon', 'authenticated']);
     expect(rolesBehind('anon')).toEqual(['anon']);
+  });
+
+  it('fixes PUBLIC for authenticated only, and a role for itself (ADR-019 item 2)', () => {
+    expect(rolesToGrant(PUBLIC)).toEqual(['authenticated']);
+    expect(rolesToGrant('anon')).toEqual(['anon']);
+    expect(rolesToGrant('staff')).toEqual(['staff']);
   });
 });
 

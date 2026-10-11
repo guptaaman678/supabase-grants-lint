@@ -141,14 +141,21 @@ describe('GL003 dead-policy', () => {
       [TODOS, 'grant insert on public.todos to anon, authenticated;', policy].join('\n'),
     );
     expect(summary(findings)).toEqual([
-      '3 error public.todos PUBLIC select grant select on public.todos to anon, authenticated;',
+      '3 error public.todos PUBLIC select grant select on public.todos to authenticated;',
     ]);
     expect(findings[0]?.message).toBe(
       'Policy "anyone reads" on public.todos is for select by PUBLIC, but neither anon nor ' +
         'authenticated holds any select privilege on it: Postgres checks privileges before RLS, ' +
         'so the policy never applies and those requests fail with 42501 permission denied. Grant ' +
-        'anon and authenticated the privilege in the same migration, or drop the policy.',
+        'authenticated the privilege in the same migration (and anon as well only if signed-out ' +
+        'visitors should pass the policy), or drop the policy.',
     );
+    // ADR-019 item 2: the fix grants nothing to anon, and applying it clears the finding.
+    const fix = findings[0]?.fix ?? '';
+    expect(fix).not.toMatch(/\banon\b/);
+    expect(
+      lint([TODOS, 'grant insert on public.todos to anon, authenticated;', policy, fix].join('\n')),
+    ).toEqual([]);
     for (const role of ['anon', 'authenticated', 'public']) {
       expect(
         lint([TODOS, policy, `grant select on public.todos to ${role};`].join('\n')),

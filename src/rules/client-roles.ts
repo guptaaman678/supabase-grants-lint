@@ -24,3 +24,12 @@ export function isCheckedPolicyRole(ctx: RuleContext, role: Grantee): boolean {
 export function rolesBehind(role: Grantee): readonly Grantee[] {
   return role === PUBLIC ? API_CLIENT_ROLES : [role];
 }
+
+/**
+ * The roles a fix grants to for a policy for `role`. A `PUBLIC` policy is fixed for
+ * `authenticated` only (ADR-019 item 2): either role satisfies the rules, and a missing anon grant
+ * fails loudly with 42501 while an unneeded one silently opens the table to signed-out visitors.
+ */
+export function rolesToGrant(role: Grantee): readonly Grantee[] {
+  return role === PUBLIC ? ['authenticated'] : [role];
+}

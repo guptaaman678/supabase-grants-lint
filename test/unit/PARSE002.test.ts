@@ -53,6 +53,28 @@ describe('PARSE002 dynamic-sql-skipped', () => {
     expect(findings[0]?.message).not.toContain(String.fromCodePoint(0x2014)); // G7
   });
 
+  it('reports a DO block that drops, alters or renames a relation (ADR-019 item 3)', () => {
+    const findings = lint([
+      'create table public.todos (id uuid primary key);\n' +
+        'do $$ begin if exists (select 1) then drop table public.todos; end if; end $$;',
+    ]);
+    expect(findings.map((f) => f.message)).toEqual([
+      'DO block not modelled; it mentions drop table. The replay does not run it, so any ' +
+        'relation it drops, alters or renames stays in the replay as it was before the block. ' +
+        'Move those statements out of the block, or suppress this with a reason.',
+    ]);
+    const both = lint([
+      "do $$ begin alter table public.todos rename to tasks; execute 'grant select on public.tasks to anon'; end $$;",
+    ]);
+    expect(both.map((f) => f.message)).toEqual([
+      'DO block not modelled; it mentions grant, alter table, rename. The replay does not run ' +
+        'it, so any grants, tables or policies it creates are not checked, and any relation it ' +
+        'drops, alters or renames stays in the replay as it was before the block. Move those ' +
+        'statements out of the block, or suppress this with a reason.',
+    ]);
+    expect(both[0]?.message).not.toContain(String.fromCodePoint(0x2014)); // G7
+  });
+
   it('checks every file and ignores unparseable statements and DO blocks without grants', () => {
     const findings = lint([
       "do $$ begin execute 'revoke all on public.todos from anon'; end $$;",
