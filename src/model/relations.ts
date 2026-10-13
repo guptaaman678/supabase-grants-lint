@@ -166,6 +166,8 @@ interface State {
   readonly sequences: ReadonlyMap<string, Sequence>;
   /** Keyed by relation, then policy name. Policies may exist on relations the catalog does not track. */
   readonly policies: ReadonlyMap<string, ReadonlyMap<string, Policy>>;
+  /** Keyed by relation: where a `DO` block last made its policies unknown. */
+  readonly policiesUncertain: ReadonlyMap<string, SourceLocation>;
   readonly eventTriggers: ReadonlyMap<string, EventTriggerDefinition>;
   readonly autoRlsMode: AutoRlsMode;
   /** Where `public.rls_auto_enable()` returning `event_trigger` was defined, while it exists. */
@@ -206,6 +208,7 @@ export class Catalog {
       relations: new Map(),
       sequences: new Map(),
       policies: new Map(),
+      policiesUncertain: new Map(),
       eventTriggers: new Map(),
       autoRlsMode,
       autoRlsFunction: null,
@@ -370,6 +373,21 @@ export class Catalog {
     return [...this.#state.policies.values()].flatMap((byName) => [...byName.values()]);
   }
 
+  /** Where a `DO` block last made the relation's policies unknown, or `null`. */
+  policiesUncertain(relation: RelationName): SourceLocation | null {
+    return this.#state.policiesUncertain.get(key(relation)) ?? null;
+  }
+
+  /**
+   * Marks the policies of each named relation as unknown from `at` on: a `DO` block may have
+   * created, altered or dropped them. Nothing but dropping the relation clears the mark.
+   */
+  markPoliciesUncertain(relations: readonly RelationName[], at: SourceLocation): Catalog {
+    const policiesUncertain = new Map(this.#state.policiesUncertain);
+    for (const relation of relations) policiesUncertain.set(key(relation), at);
+    return new Catalog({ ...this.#state, policiesUncertain });
+  }
+
   withDefaults(defaults: DefaultPrivileges): Catalog {
     return new Catalog({ ...this.#state, defaults });
   }
@@ -460,9 +478,9 @@ export class Catalog {
   }
 
   /**
-   * Removes the relation (if tracked), its policies and the sequences its serial columns own. The
-   * table leaves every publication; where membership is uncertain, a table created later under the
-   * same name is a known non-member, so the name becomes `excluded`.
+   * Removes the relation (if tracked), its policies (and their uncertain mark) and the sequences its
+   * serial columns own. The table leaves every publication; where membership is uncertain, a table
+   * created later under the same name is a known non-member, so the name becomes `excluded`.
    */
   dropRelation(name: RelationName): Catalog {
     const relations = new Map(this.#state.relations);
@@ -474,6 +492,8 @@ export class Catalog {
     );
     const policies = new Map(this.#state.policies);
     policies.delete(key(name));
+    const policiesUncertain = new Map(this.#state.policiesUncertain);
+    policiesUncertain.delete(key(name));
     const publications = new Map(
       [...this.#state.publications].map(([n, p]) => {
         const excluded =
@@ -483,7 +503,14 @@ export class Catalog {
         return [n, Object.freeze({ ...p, tables: without(p.tables, name), excluded })];
       }),
     );
-    return new Catalog({ ...this.#state, relations, sequences, policies, publications });
+    return new Catalog({
+      ...this.#state,
+      relations,
+      sequences,
+      policies,
+      policiesUncertain,
+      publications,
+    });
   }
 
   dropSequence(name: RelationName): Catalog {
@@ -493,9 +520,10 @@ export class Catalog {
   }
 
   /**
-   * `RENAME TO` or `SET SCHEMA`: the ACL, the `created` marker and the policies move with the
-   * relation. Owned sequences follow their table: they keep their name, and move with it to a new
-   * schema, as Postgres does. Publications keep the table under its new name.
+   * `RENAME TO` or `SET SCHEMA`: the ACL, the `created` marker and the policies (with their
+   * uncertain mark) move with the relation. Owned sequences follow their table: they keep their
+   * name, and move with it to a new schema, as Postgres does. Publications keep the table under its
+   * new name.
    */
   moveRelation(from: RelationName, to: RelationName): Catalog {
     const fromKey = key(from);
@@ -534,6 +562,12 @@ export class Catalog {
         ),
       );
     }
+    const policiesUncertain = new Map(this.#state.policiesUncertain);
+    const mark = policiesUncertain.get(fromKey);
+    if (mark !== undefined) {
+      policiesUncertain.delete(fromKey);
+      policiesUncertain.set(toKey, mark);
+    }
     const publications = new Map(
       [...this.#state.publications].map(([n, p]) => [
         n,
@@ -544,7 +578,14 @@ export class Catalog {
         }),
       ]),
     );
-    return new Catalog({ ...this.#state, relations, sequences, policies, publications });
+    return new Catalog({
+      ...this.#state,
+      relations,
+      sequences,
+      policies,
+      policiesUncertain,
+      publications,
+    });
   }
 
   /** `ALTER SEQUENCE ... RENAME TO | SET SCHEMA`; ownership is kept. */

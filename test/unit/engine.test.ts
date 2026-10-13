@@ -151,6 +151,7 @@ describe('snapshot', () => {
           altered: null,
         },
       ],
+      policiesUncertain: null,
     });
     expect(audit?.rls).toEqual({ enabled: false, forced: false, source: 'default', at: null });
     // The rls_auto_enable function was defined before `orders` (autoRls "auto").
@@ -186,6 +187,25 @@ grant usage, select on sequence public.counter to authenticated, public;`,
         privileges: { authenticated: ['select', 'usage'], public: ['select', 'usage'] },
         ownedBy: null,
       },
+    ]);
+  });
+
+  it('records where a DO block made a relation policies uncertain', async () => {
+    await loadEngine();
+    const dir = project({
+      '1_a.sql': `create table public.todos (id int);
+create table public.scores (id int);
+alter table public.todos enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policies where policyname = 'todos read') then
+    create policy "todos read" on public.todos for select to authenticated using (true);
+  end if;
+end $$;`,
+    });
+    const snapshot = replayProjectSync({ projectDir: dir });
+    expect(snapshot.relations.map((r) => [r.name, r.policies, r.policiesUncertain])).toEqual([
+      ['todos', [], { file: 'supabase/migrations/1_a.sql', line: 4, column: 1 }],
+      ['scores', [], null],
     ]);
   });
 

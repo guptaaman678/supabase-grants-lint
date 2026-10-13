@@ -19,6 +19,7 @@ import {
   type EventTriggerState,
   type ObjectKind,
   type PolicyCommand,
+  type PolicyMention,
   type PolicyPredicate,
   type Privilege,
   type PublicationMention,
@@ -431,6 +432,53 @@ export function publicationMentions(body: string): PublicationMention[] {
     }
   }
   return [...found];
+}
+
+/** A plain (folded to lower case) or quoted identifier at the start of `text`, or `null`. */
+function identifier(text: string): { value: string; length: number } | null {
+  const quoted = QUOTED_NAME.exec(text);
+  if (quoted !== null) {
+    return { value: (quoted[1] ?? '').replaceAll('""', '"'), length: quoted[0].length };
+  }
+  const plain = PLAIN_NAME.exec(text);
+  return plain === null ? null : { value: plain[0].toLowerCase(), length: plain[0].length };
+}
+
+/** `name` or `schema.name` written literally at the start of `text`, or `null`. */
+function literalName(text: string): QualifiedName | null {
+  const first = identifier(text);
+  if (first === null) return null;
+  let rest = text.slice(first.length);
+  let name: QualifiedName = { schema: null, name: first.value };
+  if (rest.startsWith('.')) {
+    const second = identifier(rest.slice(1));
+    if (second === null) return null;
+    name = { schema: first.value, name: second.value };
+    rest = rest.slice(1 + second.length);
+  }
+  return NAME_END.test(rest) ? name : null;
+}
+
+const POLICY_VERB = /\b(?:alter|create|drop)\s+policy\s+(?:if\s+exists\s+)?/gi;
+/** The policy's name (any token, since it may be built at run time) and the `ON` after it. */
+const POLICY_NAME_ON = /^(?:"(?:[^"]|"")+"|\S+)\s+on\s+/i;
+
+/**
+ * The relations whose policies a `DO` body creates, alters or drops: the name after `ON` in each
+ * `CREATE | ALTER | DROP POLICY [IF EXISTS] <policy>`, case-insensitive, quoted or not,
+ * schema-qualified or not. A relation name built at run time (`%I` in `format()`, `' || name`), or
+ * a policy statement whose `ON` cannot be found, yields `'*'`.
+ */
+export function policyMentions(body: string): PolicyMention[] {
+  const found = new Map<string, PolicyMention>();
+  for (const match of body.matchAll(POLICY_VERB)) {
+    const rest = body.slice(match.index + match[0].length);
+    const on = POLICY_NAME_ON.exec(rest);
+    const mention = (on === null ? null : literalName(rest.slice(on[0].length))) ?? '*';
+    // A repeated key keeps its first position, so each relation is listed once, in order.
+    found.set(JSON.stringify(mention), mention);
+  }
+  return [...found.values()];
 }
 
 /** The tables and schemas of a publication statement; row filters and column lists are dropped. */
@@ -1019,6 +1067,7 @@ export function toStatement(node: Node, at: At): Statement {
       body,
       mentions: dynamicSqlMentions(body),
       publicationMentions: publicationMentions(body),
+      policyMentions: policyMentions(body),
     };
   }
   return unknown(at, nodeTypeOf(node));

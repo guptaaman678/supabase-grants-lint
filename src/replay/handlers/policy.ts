@@ -3,7 +3,14 @@
  * (spec §6.1). Policies are recorded on any relation, including one the replay never saw created,
  * so the rules can warn about it.
  */
-import type { AlterPolicy, CreatePolicy, DropPolicy, RenamePolicy } from '../../parse/ir.js';
+import type {
+  AlterPolicy,
+  CreatePolicy,
+  DropPolicy,
+  DynamicSql,
+  RenamePolicy,
+} from '../../parse/ir.js';
+import type { RelationName } from '../../model/relations.js';
 import { locate, type ReplayContext, resolveName, resolveRoles } from '../context.js';
 
 export function createPolicy(stmt: CreatePolicy, ctx: ReplayContext): void {
@@ -97,4 +104,18 @@ export function dropPolicy(stmt: DropPolicy, ctx: ReplayContext): void {
     command: existing?.command ?? null,
     roles: existing?.roles ?? null,
   });
+}
+
+/**
+ * A `DO` block whose body creates, alters or drops a policy makes that relation's policies unknown
+ * from the block on (engine only): the replay does not run the body, which often only creates the
+ * policy `if not exists`. A relation name built at run time marks every relation that exists at that
+ * point. No replay event is recorded, so grants-lint's rules are unaffected.
+ */
+export function dynamicSqlPolicies(stmt: DynamicSql, ctx: ReplayContext): void {
+  if (stmt.policyMentions.length === 0) return;
+  const relations = stmt.policyMentions.flatMap((mention): readonly RelationName[] =>
+    mention === '*' ? ctx.catalog.relations() : [resolveName(mention)],
+  );
+  ctx.catalog = ctx.catalog.markPoliciesUncertain(relations, locate(stmt));
 }

@@ -141,6 +141,7 @@ function snapshotWith(publication: Partial<SnapshotPublication>): SchemaSnapshot
         rls: { enabled: false, forced: false, source: 'default', at: null },
         privileges: {},
         policies: [],
+        policiesUncertain: null,
       },
       {
         schema: 'public',
@@ -150,6 +151,7 @@ function snapshotWith(publication: Partial<SnapshotPublication>): SchemaSnapshot
         rls: { enabled: false, forced: false, source: 'default', at: null },
         privileges: {},
         policies: [],
+        policiesUncertain: null,
       },
     ],
     sequences: [],

@@ -181,6 +181,11 @@ export interface SnapshotRelation {
   readonly privileges: Readonly<Record<string, Readonly<Record<string, 'table' | 'columns'>>>>;
   /** Sorted by name. */
   readonly policies: readonly SnapshotPolicy[];
+  /**
+   * Where a `DO` block that creates, alters or drops a policy on this relation (or on a name built
+   * at run time) made `policies` incomplete, or `null`.
+   */
+  readonly policiesUncertain: SnapshotLocation | null;
 }
 
 export interface SnapshotPolicy {
@@ -293,13 +298,20 @@ schema`), `alter publication ... add | drop | set` (tables, `table only`, `table
   clears the mark; a later plain `add`, `drop` or `set table` keeps it, but a table it adds is a
   known member and a table it removes is listed in `excluded` (as is a table dropped while the mark
   is set, so a table recreated with the same name is a known non-member).
+- **Policy changes the replay cannot follow:** when a `DO` block contains `create`, `alter` or
+  `drop policy <policy> on <relation>`, the relation's `policiesUncertain` is set to the block from
+  then on: the block often creates the policy only `if not exists`, and its body is not run, so
+  `policies` may lack it. A relation name that is not a plain or quoted identifier (such as `%I` in
+  `format()`), or a policy statement whose `on` cannot be found, marks every relation that exists at
+  that point. A later block replaces the location; plain policy statements do not clear the mark;
+  dropping the relation does, and a rename or `set schema` keeps it.
 
 ## What stays unmodelled
 
-- Function and trigger bodies, apart from the publication scan above. Function calls are matched
-  by name only (no overloads), not transitively (a function calling a function), and not through
-  triggers.
-- Any statement inside a `DO` block apart from the publication scan.
+- Function and trigger bodies, apart from the publication scan above (policy statements in a
+  function body are not scanned). Function calls are matched by name only (no overloads), not
+  transitively (a function calling a function), and not through triggers.
+- Any statement inside a `DO` block apart from the publication and policy scans.
 - Non-event triggers; `alter table` subcommands other than the four RLS ones; ownership changes;
   role creation and membership; `security_invoker` and `security_barrier` views; `drop schema ...
 cascade`.

@@ -13,7 +13,13 @@ import { alterDefaultPrivileges } from './handlers/default-privileges.js';
 import { dropObjects } from './handlers/drop.js';
 import { grant } from './handlers/grant.js';
 import { renameObject, setSchema } from './handlers/move.js';
-import { alterPolicy, createPolicy, dropPolicy, renamePolicy } from './handlers/policy.js';
+import {
+  alterPolicy,
+  createPolicy,
+  dropPolicy,
+  dynamicSqlPolicies,
+  renamePolicy,
+} from './handlers/policy.js';
 import {
   dropPublicationFunctions,
   dynamicSqlPublications,
@@ -150,6 +156,7 @@ function apply(stmt: Statement, ctx: ReplayContext): void {
       break;
     case 'DynamicSql':
       dynamicSqlPublications(stmt, ctx);
+      dynamicSqlPolicies(stmt, ctx);
       dynamicSql(stmt, ctx);
       break;
     case 'Unparseable':

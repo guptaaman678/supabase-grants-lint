@@ -1,6 +1,7 @@
 /**
  * The model state added for the engine export (row level security, event triggers, the automatic
- * RLS fingerprint, publications and the bodies that change them) must not change anything
+ * RLS fingerprint, publications and the bodies that change them, policies changed in `DO` blocks)
+ * must not change anything
  * grants-lint reports. The same project is linted with
  * and without every new statement shape, appended at the ends of files so no other statement
  * moves; findings, notices, the summary, `explain` and `doctor` must be equal.
@@ -64,7 +65,10 @@ alter publication schema_pub set table public.messages, tables in schema private
 alter publication audit_pub rename to audit_pub_2;
 call public.seed_realtime();
 do $$ begin execute format('alter publication %I add table public.messages', 'audit_pub_2'); end $$;
-create publication supabase_realtime;`,
+create publication supabase_realtime;
+do $$ begin if exists (select 1 from pg_policies) then drop policy if exists "read todos" on public.todos; end if; end $$;
+do $$ begin alter policy "read todos" on todos to anon; drop policy if exists p on public.ghost; end $$;
+do $$ begin execute format('alter policy %I on %I.%I to anon', 'p', 'public', 'messages'); end $$;`,
   `
 drop function if exists public.rls_auto_enable() cascade;
 drop procedure if exists public.audit;

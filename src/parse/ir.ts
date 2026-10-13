@@ -278,6 +278,12 @@ export interface FunctionCall extends Base {
  */
 export type PublicationMention = string;
 
+/**
+ * The relation after `ON` in a `CREATE | ALTER | DROP POLICY` inside a `DO` body, or `'*'` when
+ * that name is not a plain or quoted identifier (`%I` in `format()`) or the `ON` cannot be found.
+ */
+export type PolicyMention = QualifiedName | '*';
+
 /** Tables and schemas a publication statement lists; `null` is `CURRENT_SCHEMA`. */
 export interface PublicationObjects {
   readonly tables: readonly QualifiedName[];
@@ -333,6 +339,8 @@ export interface DynamicSql extends Base {
   readonly mentions: readonly DynamicSqlKeyword[];
   /** Publications the body alters, creates or drops; separate from `mentions` (engine only). */
   readonly publicationMentions: readonly PublicationMention[];
+  /** Relations whose policies the body creates, alters or drops (engine only). */
+  readonly policyMentions: readonly PolicyMention[];
 }
 
 /** A statement the parser rejected (PARSE001). It is skipped. */

@@ -51,6 +51,11 @@ export interface SnapshotRelation {
   readonly privileges: Readonly<Record<string, Readonly<Record<string, 'table' | 'columns'>>>>;
   /** Sorted by name. */
   readonly policies: readonly SnapshotPolicy[];
+  /**
+   * Where a `DO` block that creates, alters or drops a policy on this relation (or on a name built
+   * at run time) made `policies` incomplete, or `null`.
+   */
+  readonly policiesUncertain: SnapshotLocation | null;
 }
 
 export interface SnapshotPolicy {
@@ -211,6 +216,7 @@ function relation(of: Relation, catalog: Catalog): SnapshotRelation {
     },
     privileges: relationPrivileges(of.acl),
     policies: [...catalog.policiesOn(of)].sort((a, b) => compare(a.name, b.name)).map(policy),
+    policiesUncertain: maybeLocation(catalog.policiesUncertain(of)),
   };
 }
 
