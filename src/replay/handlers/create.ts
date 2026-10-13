@@ -16,7 +16,7 @@ function isTracked(ctx: ReplayContext, name: RelationName): boolean {
  * while automatic RLS applies: the template's trigger enables it there and nowhere else.
  */
 function initialRls(stmt: CreateRelation, name: RelationName, ctx: ReplayContext): RowSecurity {
-  const auto = ctx.catalog.autoRls();
+  const auto = ctx.catalog.autoRls(locate(stmt).file);
   if (auto === null || stmt.relationKind !== 'table' || name.schema !== DEFAULT_SCHEMA) {
     return RLS_OFF;
   }

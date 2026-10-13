@@ -247,15 +247,24 @@ export class Catalog {
    * Whether a table created now in `public` starts with RLS on, and why: `'start'` under
    * `autoRls: "on"`; else (unless `"off"`) the first enabled automatic RLS trigger; else, under
    * `"auto"`, the `rls_auto_enable` function; `null` when it does not apply.
+   *
+   * The function counts only for a table created in a later file than the one defining it, so pass
+   * the file of the `CREATE` as `file`. A `db pull` dump writes every function before every table,
+   * and writes `ENABLE ROW LEVEL SECURITY` for each table whose RLS was on, so a table of the dump
+   * itself keeps the state its own statements give.
    */
-  autoRls(): SourceLocation | 'start' | null {
+  autoRls(file?: string): SourceLocation | 'start' | null {
     switch (this.#state.autoRlsMode) {
       case 'off':
         return null;
       case 'on':
         return 'start';
-      case 'auto':
-        return this.eventTriggers().find(isAutoRlsTrigger)?.created ?? this.#state.autoRlsFunction;
+      case 'auto': {
+        const trigger = this.eventTriggers().find(isAutoRlsTrigger);
+        if (trigger !== undefined) return trigger.created;
+        const fn = this.#state.autoRlsFunction;
+        return fn !== null && fn.file !== file ? fn : null;
+      }
     }
   }
 

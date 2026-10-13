@@ -409,7 +409,8 @@ describe('replay: autoRls modes', () => {
   it('"auto" (the default) counts the rls_auto_enable function a pulled baseline keeps', () => {
     const result = run([
       'create table public.before (id int);',
-      `${AUTO_RLS_FUNCTION}\n${AUTO_RLS_FUNCTION}\ncreate table public.todos (id int);`,
+      `${AUTO_RLS_FUNCTION}\n${AUTO_RLS_FUNCTION}`,
+      'create table public.todos (id int);',
       'drop function if exists public.rls_auto_enable(); create table public.after (id int);',
     ]);
     const fn = { file: path(2), line: 1, column: 1 };
@@ -423,6 +424,44 @@ describe('replay: autoRls modes', () => {
     expect(rls(result.final, 'public.after')).toEqual(OFF);
     expect(fileOf(result, 2).after.autoRls()).toEqual(fn);
     expect(result.final.autoRls()).toBeNull();
+  });
+
+  it('"auto" counts the function only from the next file (a db pull dump writes its own RLS)', () => {
+    const result = run([
+      `${AUTO_RLS_FUNCTION}
+       create table public.messages (id int);
+       create table public.todos (id int);
+       alter table public.todos enable row level security;`,
+      'create table public.orders (id int);',
+    ]);
+    const fn = { file: path(1), line: 1, column: 1 };
+    expect(rls(result.final, 'public.messages')).toEqual(OFF);
+    expect(rls(result.final, 'public.todos')).toMatchObject({ enabled: true, source: 'statement' });
+    expect(rls(result.final, 'public.orders')).toEqual({
+      enabled: true,
+      forced: false,
+      source: 'auto-rls',
+      at: fn,
+    });
+    expect(fileOf(result, 1).after.autoRls()).toEqual(fn);
+    expect(fileOf(result, 1).after.autoRls(path(1))).toBeNull();
+    expect(fileOf(result, 1).after.autoRls(path(2))).toEqual(fn);
+  });
+
+  it('applies an explicit trigger from its statement, in the file defining the function too', () => {
+    const result = run([
+      `${AUTO_RLS_FUNCTION}
+       create table public.messages (id int);
+       ${ENSURE_RLS}
+       create table public.todos (id int);`,
+    ]);
+    expect(rls(result.final, 'public.messages')).toEqual(OFF);
+    expect(rls(result.final, 'public.todos')).toEqual({
+      enabled: true,
+      forced: false,
+      source: 'auto-rls',
+      at: { file: path(1), line: 3, column: 8 },
+    });
   });
 
   it('prefers an enabled trigger over the function as the activation', () => {
@@ -446,7 +485,7 @@ describe('replay: autoRls modes', () => {
       'create function public.auto_rls() returns event_trigger language plpgsql as $$ begin end $$;',
     ],
   ])('ignores a function %s', (_, sql) => {
-    const result = run([`${sql}\ncreate table public.todos (id int);`]);
+    const result = run([sql, 'create table public.todos (id int);']);
     expect(rls(result.final, 'public.todos')).toEqual(OFF);
   });
 
@@ -497,8 +536,8 @@ describe('replay: autoRls modes', () => {
     const result = run([
       `${AUTO_RLS_FUNCTION}
        create function public.audit() returns void language sql as $$ select $$;
-       drop function public.audit();
-       create table public.todos (id int);`,
+       drop function public.audit();`,
+      'create table public.todos (id int);',
     ]);
     expect(rls(result.final, 'public.todos').source).toBe('auto-rls');
     expect(result.final.autoRls()).not.toBeNull();
