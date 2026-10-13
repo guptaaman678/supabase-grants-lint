@@ -1,5 +1,12 @@
 # supabase-grants-lint
 
+## 0.3.2
+
+### Patch Changes
+
+- 44736ae: Engine (experimental): under `autoRls: "auto"`, the `public.rls_auto_enable()` fingerprint now counts from the migration after the one that defines it. Tables in that same file (the tables of a `db pull` dump) keep the row level security their own statements give, instead of starting with RLS on. An explicit `ensure_rls` event trigger still applies from its statement. grants-lint's rules do not read RLS, so their output is unchanged.
+- aa6280c: Engine (experimental): each snapshot relation gains `policiesUncertain`, the location of the last `DO` block that creates, alters or drops a policy on it (often `if not exists`, which the replay does not run), or `null`. A policy statement on a relation name built at run time marks every relation that exists at that point. Dropping the relation clears the mark. grants-lint's rules do not read it, so their output is unchanged.
+
 ## 0.3.1
 
 ### Patch Changes
