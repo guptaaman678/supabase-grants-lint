@@ -163,6 +163,13 @@ later in the same file counts and a grant in a later file does not. Details and 
 SQL, objects created outside migrations): [docs/how-it-works.md](docs/how-it-works.md). The same
 replay is available to other tools as a library (experimental): [docs/engine.md](docs/engine.md).
 
+## Works with eslint-plugin-supabase
+
+[eslint-plugin-supabase](https://github.com/guptaaman678/eslint-plugin-supabase) replays the same
+migrations through this engine and reads the same config, and reports the line of client code that
+a missing grant or policy breaks: a `select`, `insert` or Realtime subscription on a table the
+client's role cannot reach. Use this CLI in CI on the migrations, and the plugin in the editor.
+
 Not affiliated with or endorsed by Supabase.
 
 ## License
