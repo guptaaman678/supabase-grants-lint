@@ -1,7 +1,8 @@
 /**
  * `CREATE POLICY`, `ALTER POLICY [... TO ...]`, `ALTER POLICY ... RENAME TO` and `DROP POLICY`
- * (spec §6.1), and the policy statements the replay cannot read (`DO` blocks, unparseable ones). Policies are recorded on any relation, including one the replay never saw created,
- * so the rules can warn about it.
+ * (spec §6.1), and the policy statements the replay cannot read (`DO` blocks, unparseable ones).
+ * Policies are recorded on any relation, including one the replay never saw created, so the rules
+ * can warn about it.
  */
 import type {
   AlterPolicy,

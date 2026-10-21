@@ -497,8 +497,9 @@ export function policyMentions(body: string): PolicyMention[] {
  */
 export function unparseablePolicyMentions(text: string): QualifiedName[] {
   if (!/^(?:alter|create|drop)\s+policy\s/i.test(text)) return [];
-  const [first] = policyMentions(text);
-  return first === undefined || first === '*' ? [] : [first];
+  return policyMentions(text)
+    .slice(0, 1)
+    .filter((mention): mention is QualifiedName => mention !== '*');
 }
 
 /** The tables and schemas of a publication statement; row filters and column lists are dropped. */
