@@ -1,7 +1,7 @@
 /**
  * The model state added for the engine export (row level security, event triggers, the automatic
- * RLS fingerprint, publications and the bodies that change them, policies changed in `DO` blocks)
- * must not change anything
+ * RLS fingerprint, publications and the bodies that change them, policies changed in `DO` blocks
+ * or by unparseable policy statements) must not change anything
  * grants-lint reports. The same project is linted with
  * and without every new statement shape, appended at the ends of files so no other statement
  * moves; findings, notices, the summary, `explain` and `doctor` must be equal.
@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { diagnose, formatDoctor } from '../../src/doctor.js';
+import { loadEngine, replayProjectSync } from '../../src/engine.js';
 import { explain, formatExplain } from '../../src/explain.js';
 import { lint } from '../../src/lint.js';
 
@@ -122,5 +123,46 @@ describe('engine model additions are silent in grants-lint', () => {
     const text = async (cwd: string): Promise<string> =>
       formatDoctor(await diagnose({ cwd })).replaceAll(cwd, '<dir>');
     expect(await text(added)).toBe(await text(plain));
+  });
+});
+
+describe('the uncertain mark of an unparseable policy statement is silent in grants-lint', () => {
+  // The parser rejects both at the same `not`; only the first reads `on <relation>` and marks it.
+  const statement = (on: string) =>
+    `create policy if not exists "write todos" ${on} public.todos for insert to anon with check (true);`;
+  const write = (name: string, on: string): string => {
+    const dir = project(name, false);
+    const first = path.join(dir, 'supabase', 'migrations', '20261001000001_m1.sql');
+    writeFileSync(first, `${BASE[0] ?? ''}\n${statement(on)}\n`);
+    return dir;
+  };
+  const marked = write('marked', 'on');
+  const unmarked = write('unmarked', 'xx');
+
+  it('marks the relation in the engine snapshot only for the statement that names it', async () => {
+    await loadEngine();
+    const mark = (cwd: string) =>
+      replayProjectSync({ projectDir: cwd }).relations.find((r) => r.name === 'todos')
+        ?.policiesUncertain ?? null;
+    expect(mark(marked)).toEqual({
+      file: 'supabase/migrations/20261001000001_m1.sql',
+      line: 5,
+      column: 1,
+    });
+    expect(mark(unmarked)).toBeNull();
+  });
+
+  it('gives the same findings, notices, summary and explain output', async () => {
+    const strip = (result: Awaited<ReturnType<typeof lint>>) => ({
+      ...result,
+      summary: { ...result.summary, durationMs: 0 },
+    });
+    const before = strip(await lint({ cwd: unmarked }));
+    const after = strip(await lint({ cwd: marked }));
+    expect(before.findings.some((f) => f.ruleId === 'PARSE001')).toBe(true);
+    expect(after).toEqual(before);
+    const text = async (cwd: string): Promise<string> =>
+      formatExplain(await explain({ cwd, relation: 'public.todos' })).replaceAll(cwd, '<dir>');
+    expect(await text(marked)).toBe(await text(unmarked));
   });
 });

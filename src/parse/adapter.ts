@@ -267,7 +267,15 @@ function parseMigration(source: string, file: string): ParsedFile {
       where === null
         ? failure.message
         : `${failure.message} (line ${String(where.line)}, column ${String(where.column)})`;
-    located.push({ start: failure.start, statement: { kind: 'Unparseable', ...at, message } });
+    located.push({
+      start: failure.start,
+      statement: {
+        kind: 'Unparseable',
+        ...at,
+        message,
+        policyMentions: unparseablePolicyMentions(at.text),
+      },
+    });
   }
   located.sort((a, b) => a.start - b.start);
 
@@ -459,13 +467,13 @@ function literalName(text: string): QualifiedName | null {
   return NAME_END.test(rest) ? name : null;
 }
 
-const POLICY_VERB = /\b(?:alter|create|drop)\s+policy\s+(?:if\s+exists\s+)?/gi;
+const POLICY_VERB = /\b(?:alter|create|drop)\s+policy\s+(?:if\s+(?:not\s+)?exists\s+)?/gi;
 /** The policy's name (any token, since it may be built at run time) and the `ON` after it. */
 const POLICY_NAME_ON = /^(?:"(?:[^"]|"")+"|\S+)\s+on\s+/i;
 
 /**
  * The relations whose policies a `DO` body creates, alters or drops: the name after `ON` in each
- * `CREATE | ALTER | DROP POLICY [IF EXISTS] <policy>`, case-insensitive, quoted or not,
+ * `CREATE | ALTER | DROP POLICY [IF [NOT] EXISTS] <policy>`, case-insensitive, quoted or not,
  * schema-qualified or not. A relation name built at run time (`%I` in `format()`, `' || name`), or
  * a policy statement whose `ON` cannot be found, yields `'*'`.
  */
@@ -479,6 +487,18 @@ export function policyMentions(body: string): PolicyMention[] {
     found.set(JSON.stringify(mention), mention);
   }
   return [...found.values()];
+}
+
+/**
+ * The relation an unparseable statement meant to change the policies of: the first of
+ * `policyMentions` when the statement starts with `CREATE | ALTER | DROP POLICY` and names it
+ * literally (`CREATE POLICY IF NOT EXISTS`, which Postgres rejects, is the common case). Anything
+ * else, including a name built at run time, yields none.
+ */
+export function unparseablePolicyMentions(text: string): QualifiedName[] {
+  if (!/^(?:alter|create|drop)\s+policy\s/i.test(text)) return [];
+  const [first] = policyMentions(text);
+  return first === undefined || first === '*' ? [] : [first];
 }
 
 /** The tables and schemas of a publication statement; row filters and column lists are dropped. */
