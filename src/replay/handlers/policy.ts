@@ -1,7 +1,8 @@
 /**
  * `CREATE POLICY`, `ALTER POLICY [... TO ...]`, `ALTER POLICY ... RENAME TO` and `DROP POLICY`
- * (spec §6.1). Policies are recorded on any relation, including one the replay never saw created,
- * so the rules can warn about it.
+ * (spec §6.1), and the policy statements the replay cannot read (`DO` blocks, unparseable ones).
+ * Policies are recorded on any relation, including one the replay never saw created, so the rules
+ * can warn about it.
  */
 import type {
   AlterPolicy,
@@ -9,6 +10,7 @@ import type {
   DropPolicy,
   DynamicSql,
   RenamePolicy,
+  Unparseable,
 } from '../../parse/ir.js';
 import type { RelationName } from '../../model/relations.js';
 import { locate, type ReplayContext, resolveName, resolveRoles } from '../context.js';
@@ -118,4 +120,18 @@ export function dynamicSqlPolicies(stmt: DynamicSql, ctx: ReplayContext): void {
     mention === '*' ? ctx.catalog.relations() : [resolveName(mention)],
   );
   ctx.catalog = ctx.catalog.markPoliciesUncertain(relations, locate(stmt));
+}
+
+/**
+ * A policy statement the parser rejected (`CREATE POLICY IF NOT EXISTS ... ON t`) makes that
+ * relation's policies unknown from the statement on (engine only): no database runs the file as
+ * written, so the policies it meant to define are in place, or the file never ran. No replay event
+ * is added to the PARSE001 skip, so grants-lint's rules are unaffected.
+ */
+export function unparseablePolicies(stmt: Unparseable, ctx: ReplayContext): void {
+  if (stmt.policyMentions.length === 0) return;
+  ctx.catalog = ctx.catalog.markPoliciesUncertain(
+    stmt.policyMentions.map(resolveName),
+    locate(stmt),
+  );
 }

@@ -1,9 +1,15 @@
 /**
- * Policies changed inside `DO` blocks (engine only): the parser's scan of the body, the replay's
- * uncertain mark on the named relations, and the snapshot field that carries it.
+ * Policies changed inside `DO` blocks or by unparseable policy statements (engine only): the
+ * parser's scan of the body or statement, the replay's uncertain mark on the named relations, and
+ * the snapshot field that carries it.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import { loadParser, type MigrationParser, policyMentions } from '../../src/parse/adapter.js';
+import {
+  loadParser,
+  type MigrationParser,
+  policyMentions,
+  unparseablePolicyMentions,
+} from '../../src/parse/adapter.js';
 import { Catalog } from '../../src/model/relations.js';
 import { replay, type ReplayResult } from '../../src/replay/engine.js';
 import { toSnapshot } from '../../src/snapshot.js';
@@ -60,6 +66,7 @@ describe('policyMentions', () => {
     ['create policy "read on all" on public.orders', [{ schema: 'public', name: 'orders' }]],
     ['drop policy if exists p on public.orders;', [{ schema: 'public', name: 'orders' }]],
     ['DROP POLICY IF EXISTS "p" ON orders', [{ schema: null, name: 'orders' }]],
+    ['create policy if not exists p on public.todos', [{ schema: 'public', name: 'todos' }]],
     ['alter policy p on public.todos rename to q', [{ schema: 'public', name: 'todos' }]],
     [
       'alter policy p\n  on public.todos\n  to authenticated',
@@ -231,6 +238,94 @@ do $$ begin drop policy if exists p on public.todos; end $$;`,
     });
     const byName = Object.fromEntries(snapshot.relations.map((r) => [r.name, r.policiesUncertain]));
     expect(byName).toEqual({ todos: at(2, 1), orders: null, audit_log: null });
+  });
+});
+
+// Postgres has no `CREATE POLICY IF NOT EXISTS`: the parser rejects both statements.
+const UNPARSEABLE = `alter table public.todos enable row level security;
+create policy if not exists todos_select on public.todos for select to authenticated using (true);
+CREATE POLICY IF NOT EXISTS "Orders insert" ON orders FOR INSERT WITH CHECK (true);`;
+
+describe('unparseablePolicyMentions', () => {
+  it.each([
+    [
+      'create policy if not exists p on public.todos for select using (true)',
+      [{ schema: 'public', name: 'todos' }],
+    ],
+    ['ALTER POLICY p ON "Todos" TO', [{ schema: null, name: 'Todos' }]],
+    ['drop  policy\np on public.todos cascade restrict', [{ schema: 'public', name: 'todos' }]],
+    [
+      'create policy if not exists p on public.todos using (true); create policy q on public.orders',
+      [{ schema: 'public', name: 'todos' }],
+    ],
+  ])('reads %j', (text, expected) => {
+    expect(unparseablePolicyMentions(text)).toEqual(expected);
+  });
+
+  it.each([
+    'create policy if not exists p',
+    'create policy if not exists p on %I using (true)',
+    "create policy p on public.' || t",
+    'create policyx p on public.todos',
+    'create  table if not exists public.todos (',
+    "select 'x' frm t; create policy p on public.todos using (true)",
+    'grant selectt oon public.todos to anon -- create policy p on public.orders',
+    '',
+  ])('yields none for %j', (text) => {
+    expect(unparseablePolicyMentions(text)).toEqual([]);
+  });
+
+  it('is filled on unparseable statements, and empty on other ones', () => {
+    const statements = parser.parse(
+      `${UNPARSEABLE}\ngrant selectt oon public.todos to anon;`,
+      path(1),
+    ).statements;
+    expect(statements.map((s) => s.kind)).toEqual([
+      'AlterTableRowSecurity',
+      'Unparseable',
+      'Unparseable',
+      'Unparseable',
+    ]);
+    expect(statements.map((s) => (s.kind === 'Unparseable' ? s.policyMentions : null))).toEqual([
+      null,
+      [{ schema: 'public', name: 'todos' }],
+      [{ schema: null, name: 'orders' }],
+      [],
+    ]);
+  });
+});
+
+describe('replay: unparseable policy statements', () => {
+  it('marks only the named relations, each at its statement', () => {
+    const result = run([TABLES, UNPARSEABLE]);
+    expect(mark(result, 'todos')).toEqual(at(2, 2));
+    expect(mark(result, 'orders')).toEqual(at(2, 3));
+    expect(mark(result, 'audit_log', 'private')).toBeNull();
+    // The RLS enable in the same file still counts, and no policy is recorded.
+    expect(result.final.relation({ schema: 'public', name: 'todos' })?.rls.enabled).toBe(true);
+    expect(result.final.policiesOn({ schema: 'public', name: 'todos' })).toEqual([]);
+  });
+
+  it('leaves the catalog unchanged for any other unparseable statement', () => {
+    const result = run([
+      TABLES,
+      'grant selectt oon public.todos to anon;\ncreate policy if not exists p;',
+    ]);
+    for (const [schema, name] of [
+      ['public', 'todos'],
+      ['public', 'orders'],
+      ['private', 'audit_log'],
+    ] as const) {
+      expect(mark(result, name, schema)).toBeNull();
+    }
+  });
+
+  it('records only the PARSE001 skips', () => {
+    const result = run([TABLES, UNPARSEABLE]);
+    expect(result.files[1]?.events.map((e) => [e.kind, e.kind === 'skipped' && e.reason])).toEqual([
+      ['skipped', 'unparseable'],
+      ['skipped', 'unparseable'],
+    ]);
   });
 });
 

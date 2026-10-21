@@ -348,6 +348,11 @@ export interface Unparseable extends Base {
   readonly kind: 'Unparseable';
   /** The parser's message, with the error's line and column. */
   readonly message: string;
+  /**
+   * The relation whose policies the statement meant to create, alter or drop, when it starts as a
+   * policy statement with a literal `ON <name>`; else empty (engine only).
+   */
+  readonly policyMentions: readonly QualifiedName[];
 }
 
 /** A valid statement the replay model does not need (SELECT, CREATE INDEX, GRANT on functions ...). */

@@ -19,6 +19,7 @@ import {
   dropPolicy,
   dynamicSqlPolicies,
   renamePolicy,
+  unparseablePolicies,
 } from './handlers/policy.js';
 import {
   dropPublicationFunctions,
@@ -160,6 +161,7 @@ function apply(stmt: Statement, ctx: ReplayContext): void {
       dynamicSql(stmt, ctx);
       break;
     case 'Unparseable':
+      unparseablePolicies(stmt, ctx);
       unparseable(stmt, ctx);
       break;
     case 'Unknown':

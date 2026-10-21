@@ -205,6 +205,25 @@ end $$;`,
     ]);
   });
 
+  it('records where an unparseable policy statement made a relation policies uncertain', async () => {
+    await loadEngine();
+    const dir = project({
+      '1_a.sql': `create table public.todos (id int);
+create table public.scores (id int);
+alter table public.todos enable row level security;
+create policy if not exists "todos read" on public.todos for select to authenticated using (true);
+create policy if not exists "todos write" on todos for insert to authenticated with check (true);`,
+    });
+    const snapshot = replayProjectSync({ projectDir: dir });
+    expect(snapshot.meta.parseProblems).toBe(2);
+    expect(
+      snapshot.relations.map((r) => [r.name, r.rls.enabled, r.policies, r.policiesUncertain]),
+    ).toEqual([
+      ['todos', true, [], { file: 'supabase/migrations/1_a.sql', line: 5, column: 1 }],
+      ['scores', false, [], null],
+    ]);
+  });
+
   it('records publications sorted by name, with the uncertain mark and exclusions', async () => {
     await loadEngine();
     const snapshot = replayProjectSync({ projectDir: project(MAIN) });

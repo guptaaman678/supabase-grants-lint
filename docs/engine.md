@@ -183,7 +183,8 @@ export interface SnapshotRelation {
   readonly policies: readonly SnapshotPolicy[];
   /**
    * Where a `DO` block that creates, alters or drops a policy on this relation (or on a name built
-   * at run time) made `policies` incomplete, or `null`.
+   * at run time), or a policy statement on it that could not be parsed, made `policies`
+   * incomplete, or `null`.
    */
   readonly policiesUncertain: SnapshotLocation | null;
 }
@@ -305,6 +306,13 @@ schema`), `alter publication ... add | drop | set` (tables, `table only`, `table
   `format()`), or a policy statement whose `on` cannot be found, marks every relation that exists at
   that point. A later block replaces the location; plain policy statements do not clear the mark;
   dropping the relation does, and a rename or `set schema` keeps it.
+- **Policy statements that cannot be parsed:** a statement the parser rejects (PARSE001) that
+  starts with `create`, `alter` or `drop policy <policy> on <relation>`, with the relation named
+  as a plain or quoted identifier, sets that relation's `policiesUncertain` to the statement, as a
+  `DO` block does. The common case is `create policy if not exists`, which Postgres does not
+  accept: no database applies the file as written, so either the file never ran or its policies
+  were applied in some corrected form, and `policies` cannot tell which. Any other unparseable
+  statement, including a policy statement whose relation is not named literally, marks nothing.
 
 ## What stays unmodelled
 
